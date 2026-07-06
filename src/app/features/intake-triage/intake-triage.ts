@@ -193,6 +193,10 @@ export class IntakeTriage {
    * unless the underlying resource value itself changes (AC-1.3). */
   protected readonly caseFile = linkedSignal<CaseFile>(() => this.triageResource.value() ?? EMPTY_CASE_FILE);
 
+  /** Template binds directly to each field's FieldState.value (e.g. [(value)]="intakeForm.species().value")
+   * rather than importing Angular's own `Field`/`FormField` directives from '@angular/forms/signals' —
+   * those names collide with this app's own `FormField` UI component (../../ui/form-field/form-field).
+   * Don't "fix" this by importing Angular's FormField under an alias unless you also rename the local one. */
   protected readonly intakeForm = form(this.caseFile);
 
   /** huggabilityScore is a number field in the model but app-form-field only speaks string

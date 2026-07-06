@@ -9,6 +9,8 @@ function resolveModel(): string {
   return Netlify.env.get('GEMINI_TEST_MODEL') || 'gemini-3.5-flash';
 }
 
+class RateLimitedError extends Error {}
+
 const encoder = new TextEncoder();
 
 /** Encodes a backend SSE event as bytes — controller.enqueue() on a Deno ReadableStream requires Uint8Array, not a string. */
@@ -106,6 +108,9 @@ async function streamGeminiTurn(
   if (!response.ok || !response.body) {
     const errText = await response.text().catch(() => '');
     console.error('[chat] Gemini API error', response.status, errText);
+    if (response.status === 429) {
+      throw new RateLimitedError(`Gemini API rate limit hit: ${errText}`);
+    }
     throw new Error(`Gemini API request failed with status ${response.status}`);
   }
 
@@ -209,11 +214,17 @@ export default async (req: Request) => {
 
           controller.close();
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          controller.enqueue(sseEvent('error', {
-            code: 'UPSTREAM_ERROR',
-            message: errorMessage
-          }));
+          if (error instanceof RateLimitedError) {
+            controller.enqueue(sseEvent('error', {
+              code: 'RATE_LIMITED',
+              message: "We've hit the shelter's request limit for now. Please try again in a minute."
+            }));
+          } else {
+            controller.enqueue(sseEvent('error', {
+              code: 'UPSTREAM_ERROR',
+              message: error instanceof Error ? error.message : 'Unknown error'
+            }));
+          }
           controller.close();
         }
       }

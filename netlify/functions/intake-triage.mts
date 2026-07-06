@@ -32,6 +32,7 @@ interface CaseFile {
 
 class ContentSafetyBlockedError extends Error {}
 class InvalidStructuredOutputError extends Error {}
+class RateLimitedError extends Error {}
 
 /** Extracts the JSON text from an Interactions API response's final model_output step. */
 function extractOutputText(interaction: any): string {
@@ -101,6 +102,7 @@ async function triagePhoto(apiKey: string, photoBase64: string, mimeType: string
   if (!response.ok) {
     const errText = await response.text().catch(() => '');
     console.error('[intake-triage] Gemini API error', response.status, errText);
+    if (response.status === 429) throw new RateLimitedError(errText);
     if (isSafetyBlock(errText)) throw new ContentSafetyBlockedError(errText);
     throw new Error(`Gemini API request failed with status ${response.status}`);
   }
@@ -161,6 +163,11 @@ export default async (req: Request, context: Context) => {
       return new Response(JSON.stringify({
         error: { code: 'INVALID_STRUCTURED_OUTPUT', message: "The assessment didn't come back in a usable shape. Try again." }
       }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (error instanceof RateLimitedError) {
+      return new Response(JSON.stringify({
+        error: { code: 'RATE_LIMITED', message: "We've hit the shelter's request limit for now. Please try again in a minute." }
+      }), { status: 429, headers: { 'Content-Type': 'application/json' } });
     }
     console.error('[intake-triage] unexpected error', error);
     return new Response(JSON.stringify({

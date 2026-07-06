@@ -99,6 +99,8 @@ async function streamGeminiTurn(
   });
 
   if (!response.ok || !response.body) {
+    const errText = await response.text().catch(() => '');
+    console.error('[chat] Gemini API error', response.status, errText);
     throw new Error(`Gemini API request failed with status ${response.status}`);
   }
 

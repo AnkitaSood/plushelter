@@ -49,3 +49,7 @@ Thumbs.db
 
 # Local Netlify folder
 .netlify
+
+# Local env overrides (never commit GEMINI_API_KEY)
+.env
+.env.local

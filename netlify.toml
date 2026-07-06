@@ -2,7 +2,7 @@
   command = "npm run build"
   functions = "netlify/functions"
   edge_functions = "netlify/edge-functions"
-  publish = "dist/"
+  publish = "dist/plushelter/browser"
 
 # API routes: must come before SPA redirect to take precedence
 [[redirects]]
@@ -18,7 +18,7 @@
 
 [dev]
   command = "ng serve --port 4200"
-  publish = "dist/"
+  publish = "dist/plushelter/browser"
 
 # Environment variables for DEMO_MODE (can be overridden via .env.local)
 [context.production]

@@ -22,12 +22,17 @@
   },
   "private": true,
   "dependencies": {
+    "@angular/aria": "^22.0.3",
+    "@angular/cdk": "^22.0.3",
     "@angular/common": "^22.0.5",
     "@angular/compiler": "^22.0.5",
     "@angular/core": "^22.0.5",
     "@angular/forms": "^22.0.5",
     "@angular/platform-browser": "^22.0.5",
     "@angular/router": "^22.0.5",
+    "@fontsource/fredoka": "^5.2.10",
+    "@fontsource/karla": "^5.2.8",
+    "@fontsource/space-mono": "^5.2.9",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0"
   },

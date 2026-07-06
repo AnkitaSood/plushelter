@@ -1,8 +1,13 @@
 import { isDemoMode, simulateTokenDelay, DEMO_RESPONSES } from '../shared/demo-mode.mts';
 
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/interactions';
-const GEMINI_MODEL = 'gemini-3.5-flash';
 const GEMINI_API_REVISION = '2026-05-20';
+
+/** Demo model is gemini-3.5-flash (specs.md §5). Override via GEMINI_TEST_MODEL in .env.local
+ * to point real-API test calls at a cheaper model (e.g. gemini-3.1-flash-lite) without touching this file. */
+function resolveModel(): string {
+  return Netlify.env.get('GEMINI_TEST_MODEL') || 'gemini-3.5-flash';
+}
 
 const encoder = new TextEncoder();
 
@@ -165,18 +170,24 @@ export default async (req: Request) => {
               throw new Error('GEMINI_API_KEY is not configured');
             }
 
+            const model = resolveModel();
             const { interactionId, functionCall } = await streamGeminiTurn(controller, apiKey, {
-              model: GEMINI_MODEL,
+              model,
               input: body.message,
               previous_interaction_id: body.previousInteractionId,
-              tools: [SEARCH_ANIMALS_TOOL]
+              tools: [SEARCH_ANIMALS_TOOL],
+              system_instruction:
+                'You are the adoption concierge for a stuffed-animal shelter. Only call searchAvailableAnimals ' +
+                'when the adopter describes what kind of companion they want (species, temperament, size, or ' +
+                'maintenance level). For anything else — hours, policies, small talk, or general questions — ' +
+                'respond directly in plain text and do not call the tool.'
             });
 
             if (functionCall) {
               const matchedAnimals = searchRoster((functionCall.arguments.criteria as string) ?? body.message);
 
               await streamGeminiTurn(controller, apiKey, {
-                model: GEMINI_MODEL,
+                model,
                 previous_interaction_id: interactionId,
                 tools: [SEARCH_ANIMALS_TOOL],
                 input: [{

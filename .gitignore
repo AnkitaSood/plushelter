@@ -39,6 +39,9 @@ testem.log
 .claude/CLAUDE.md
 .claude/specs.md
 .claude/tasks.md
+.agents/skills/*
+.gemini/skills/*
+.claude/skills/*
 
 # System files
 .DS_Store

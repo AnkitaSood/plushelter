@@ -1,0 +1,75 @@
+<main class="harness">
+  <h1>Plushelter component harness</h1>
+  <p>Scratch route for reviewing the T0.5 core components in isolation. Not part of the demo flow.</p>
+
+  <section class="harness__section">
+    <h2>Button</h2>
+    <div class="harness__row">
+      <app-button>Primary</app-button>
+      <app-button variant="secondary">Secondary</app-button>
+      <app-button [disabled]="true">Disabled</app-button>
+    </div>
+  </section>
+
+  <section class="harness__section">
+    <h2>Form field</h2>
+    <div class="harness__row harness__row--column">
+      <app-form-field label="Case worker email" [(value)]="caseFileEmail" hint="Used for adoption follow-up only." />
+      <app-form-field label="Huggability score" error="Value out of range: expected 0-100." />
+    </div>
+  </section>
+
+  <section class="harness__section">
+    <h2>Status badge</h2>
+    <div class="harness__row">
+      <app-status-badge status="available">Available</app-status-badge>
+      <app-status-badge status="critical">Needs attention</app-status-badge>
+      <app-status-badge status="pending">In treatment</app-status-badge>
+      <app-status-badge status="info">3 tags matched</app-status-badge>
+      <app-status-badge status="celebration">Adopted!</app-status-badge>
+      <app-status-badge status="tag">Low-maintenance</app-status-badge>
+    </div>
+  </section>
+
+  <section class="harness__section">
+    <h2>Checklist item</h2>
+    <div class="harness__row harness__row--column">
+      <app-checklist-item label="Administer initial vaccinations" [(checked)]="treatmentDone" />
+      <app-checklist-item label="Schedule follow-up exam" />
+      <app-checklist-item label="Already completed at intake" [checked]="true" [disabled]="true" />
+    </div>
+    <p>Bound checkbox state: {{ treatmentDone() }}</p>
+  </section>
+
+  <section class="harness__section">
+    <h2>Chat bubble</h2>
+    <div class="harness__row harness__row--column">
+      <app-chat-bubble role="user" content="Something low-maintenance for two kids?" />
+      <app-chat-bubble
+        role="concierge"
+        content="Understood. Reviewing the current roster for low-maintenance placements."
+      />
+    </div>
+  </section>
+
+  <section class="harness__section">
+    <h2>Case-file card</h2>
+    <div class="harness__row">
+      <app-case-file-card title="Horace" subtitle="Senior · Low-maintenance" description="Prefers a quiet home." />
+      <app-case-file-card
+        title="Toast"
+        subtitle="High-energy"
+        description="Selecting opens the full case file."
+        [clickable]="true"
+      />
+    </div>
+  </section>
+
+  <section class="harness__section">
+    <h2>Dialog</h2>
+    <app-button (click)="openAdoptDialog()">Open adopt confirmation</app-button>
+    @if (dialogResult(); as result) {
+      <p>Last result: {{ result }}</p>
+    }
+  </section>
+</main>

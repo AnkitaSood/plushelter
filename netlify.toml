@@ -1,0 +1,31 @@
+[build]
+  command = "npm run build"
+  functions = "netlify/functions"
+  edge_functions = "netlify/edge-functions"
+  publish = "dist/"
+
+# API routes: must come before SPA redirect to take precedence
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+# SPA redirect for Angular routing (catch-all, must be last)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[dev]
+  command = "ng serve --port 4200"
+  publish = "dist/"
+
+# Environment variables for DEMO_MODE (can be overridden via .env.local)
+[context.production]
+  environment = { DEMO_MODE = "false" }
+
+[context.deploy-preview]
+  environment = { DEMO_MODE = "true" }
+
+[context.branch-deploy]
+  environment = { DEMO_MODE = "true" }

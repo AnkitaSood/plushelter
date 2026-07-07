@@ -1,4 +1,4 @@
-import { Component, computed, inject, linkedSignal, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, linkedSignal, signal } from '@angular/core';
 import { httpResource } from '@angular/common/http';
 import { form } from '@angular/forms/signals';
 import { Router } from '@angular/router';
@@ -57,6 +57,7 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
 
 @Component({
   selector: 'app-intake-triage',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Button, CaseFileCard, ChecklistItem, FormField, StatusBadge],
   template: `
     <section class="intake">

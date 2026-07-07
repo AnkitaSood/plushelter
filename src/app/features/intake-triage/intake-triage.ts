@@ -49,10 +49,10 @@ function readFileAsBase64(file: File): Promise<UploadedPhoto> {
     <section class="intake">
       <h1>Intake Vision Triage</h1>
 
-      <label class="intake__upload">
-        <span>Upload a photo of the intake animal</span>
-        <input type="file" accept="image/*" (change)="onPhotoSelected($event)" />
-      </label>
+      <div class="intake__upload">
+        <input #fileInput type="file" accept="image/*" class="intake__file-input" (change)="onPhotoSelected($event)" />
+        <app-button type="button" (click)="fileInput.click()">Upload a photo</app-button>
+      </div>
 
       @if (triageResource.isLoading()) {
         <app-status-badge status="pending">Assessing photo…</app-status-badge>
@@ -88,7 +88,9 @@ function readFileAsBase64(file: File): Promise<UploadedPhoto> {
         </div>
       }
 
-      <app-button type="button" (click)="clear()">Start over</app-button>
+      @if (triageResource.hasValue() || triageError()) {
+        <app-button type="button" variant="secondary" (click)="clear()">Start over</app-button>
+      }
     </section>
   `,
   styles: `
@@ -107,10 +109,10 @@ function readFileAsBase64(file: File): Promise<UploadedPhoto> {
       display: flex;
       flex-direction: column;
       gap: var(--space-2);
-      font-family: var(--font-mono);
-      font-size: var(--text-xs);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+    }
+
+    .intake__file-input {
+      display: none;
     }
 
     .intake__layout {

@@ -93,7 +93,7 @@ let nextRequestId = 0;
 
     .concierge__composer {
       display: flex;
-      align-items: flex-end;
+      align-items: center;
       gap: var(--space-3);
     }
 
@@ -106,12 +106,12 @@ export class Concierge {
   private readonly chatService = inject(ConciergeChatService);
   private lastFinalizedRequestId = -1;
 
-  protected readonly draft = signal('');
-  protected readonly history = signal<ChatTurn[]>([]);
-  protected readonly matchedAnimals = signal<Animal[]>([]);
-  protected readonly lastError = signal<{ code: string; message: string } | undefined>(undefined);
+  protected draft = signal('');
+  protected history = signal<ChatTurn[]>([]);
+  protected matchedAnimals = signal<Animal[]>([]);
+  protected lastError = signal<{ code: string; message: string } | undefined>(undefined);
 
-  private readonly pendingRequest = signal<PendingChatRequest | undefined>(undefined);
+  private pendingRequest = signal<PendingChatRequest | undefined>(undefined);
 
   protected readonly chatStream = rxResource({
     params: () => this.pendingRequest(),

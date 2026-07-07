@@ -1,1 +1,31 @@
-<router-outlet />
+<a href="#main-content" class="skip-link">Skip to main content</a>
+<header class="app-nav">
+  <div class="app-nav__brand">
+    <span class="app-nav__title">Plushelter</span>
+    <span class="app-nav__subtitle">Stuffed Animal Rehabilitation Facility</span>
+  </div>
+  <nav class="app-nav__links" aria-label="Main navigation">
+    <a
+      routerLink="/"
+      routerLinkActive="is-active"
+      [routerLinkActiveOptions]="{ exact: true }"
+      ariaCurrentWhenActive="page"
+      class="app-nav__link"
+    >Intake Triage</a>
+    <a
+      routerLink="/concierge"
+      routerLinkActive="is-active"
+      ariaCurrentWhenActive="page"
+      class="app-nav__link"
+    >Adoption Concierge</a>
+    <a
+      routerLink="/surrender-analysis"
+      routerLinkActive="is-active"
+      ariaCurrentWhenActive="page"
+      class="app-nav__link"
+    >Surrender Risk Assessment</a>
+  </nav>
+</header>
+<main id="main-content">
+  <router-outlet />
+</main>

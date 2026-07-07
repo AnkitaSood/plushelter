@@ -2,7 +2,7 @@ import { Routes } from '@angular/router';
 
 export const routes: Routes = [
   {
-    path: '',
+      path: 'component-harness',
     loadComponent: () => import('./component-harness/component-harness').then((m) => m.ComponentHarness),
   },
   {
@@ -10,7 +10,12 @@ export const routes: Routes = [
     loadComponent: () => import('./features/concierge/concierge').then((m) => m.Concierge),
   },
   {
-    path: 'intake',
+    path: 'surrender-analysis',
+    loadComponent: () =>
+      import('./features/surrender-analysis/surrender-analysis').then((m) => m.SurrenderAnalysis),
+  },
+  {
+    path: '',
     loadComponent: () => import('./features/intake-triage/intake-triage').then((m) => m.IntakeTriage),
   },
 ];

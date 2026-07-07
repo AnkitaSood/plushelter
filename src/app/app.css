@@ -1,0 +1,102 @@
+.skip-link {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  position: fixed;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 100;
+  width: auto;
+  height: auto;
+  padding: var(--space-2) var(--space-4);
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+  background: var(--color-bg);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  color: var(--color-ink);
+}
+
+/* ── App nav shell ───────────────────────────────────────────── */
+
+.app-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-5);
+  background: var(--color-bg);
+  border-bottom: var(--border-width) solid var(--border-color);
+}
+
+.app-nav__brand {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.app-nav__title {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  line-height: 1;
+  color: var(--color-ink);
+}
+
+.app-nav__subtitle {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-ink);
+}
+
+.app-nav__links {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.app-nav__link {
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-decoration: none;
+  color: var(--color-ink);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: var(--border-width) solid transparent;
+  transition:
+    background 150ms ease-out,
+    border-color 150ms ease-out;
+}
+
+.app-nav__link:hover {
+  background: color-mix(in srgb, var(--color-primary) 25%, transparent);
+}
+
+.app-nav__link.is-active {
+  background: var(--color-primary);
+  border-color: var(--border-color);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-nav__link {
+    transition: none;
+  }
+}

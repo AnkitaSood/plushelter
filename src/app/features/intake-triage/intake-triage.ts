@@ -1,11 +1,13 @@
-import { Component, computed, linkedSignal, signal } from '@angular/core';
+import { Component, computed, inject, linkedSignal, signal } from '@angular/core';
 import { httpResource } from '@angular/common/http';
 import { form } from '@angular/forms/signals';
+import { Router } from '@angular/router';
 import { Button } from '../../ui/button/button';
 import { CaseFileCard } from '../../ui/case-file-card/case-file-card';
 import { ChecklistItem } from '../../ui/checklist-item/checklist-item';
 import { FormField } from '../../ui/form-field/form-field';
 import { StatusBadge } from '../../ui/status-badge/status-badge';
+import type { Animal } from '../../data/roster';
 
 interface CaseFile {
   species: string;
@@ -42,6 +44,17 @@ function readFileAsBase64(file: File): Promise<UploadedPhoto> {
   });
 }
 
+export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefined {
+  if (!animal) return undefined;
+  return {
+    suggestedCaseName: animal.name,
+    species: animal.species,
+    condition: animal.condition,
+    huggabilityScore: 0,
+    recommendedTreatmentPlan: [],
+  };
+}
+
 @Component({
   selector: 'app-intake-triage',
   imports: [Button, CaseFileCard, ChecklistItem, FormField, StatusBadge],
@@ -49,10 +62,12 @@ function readFileAsBase64(file: File): Promise<UploadedPhoto> {
     <section class="intake">
       <h1>Intake Vision Triage</h1>
 
-      <div class="intake__upload">
-        <input #fileInput type="file" accept="image/*" class="intake__file-input" (change)="onPhotoSelected($event)" />
-        <app-button type="button" (click)="fileInput.click()">Upload a photo</app-button>
-      </div>
+      @if (!rosterAnimal()) {
+        <div class="intake__upload">
+          <input #fileInput type="file" accept="image/*" class="intake__file-input" (change)="onPhotoSelected($event)" />
+          <app-button type="button" (click)="fileInput.click()">Upload a photo</app-button>
+        </div>
+      }
 
       @if (triageResource.isLoading()) {
         <app-status-badge status="pending">Assessing photo…</app-status-badge>
@@ -62,7 +77,7 @@ function readFileAsBase64(file: File): Promise<UploadedPhoto> {
         <app-status-badge status="critical">{{ triageErr.message }}</app-status-badge>
       }
 
-      @if (triageResource.hasValue()) {
+      @if (triageResource.hasValue() || rosterAnimal()) {
         <div class="intake__layout">
           <form class="intake-form">
             <div class="intake-form__fields">
@@ -88,8 +103,12 @@ function readFileAsBase64(file: File): Promise<UploadedPhoto> {
         </div>
       }
 
-      @if (triageResource.hasValue() || triageError()) {
-        <app-button type="button" variant="secondary" (click)="clear()">Start over</app-button>
+      @if (triageResource.hasValue() || triageError() || rosterAnimal()) {
+        @if (rosterAnimal()) {
+          <app-button type="button" variant="secondary" (click)="backToRoster()">← Back to Roster</app-button>
+        } @else {
+          <app-button type="button" variant="secondary" (click)="clear()">Start over</app-button>
+        }
       }
     </section>
   `,
@@ -131,28 +150,14 @@ function readFileAsBase64(file: File): Promise<UploadedPhoto> {
       animation: intake-field-reveal 0.25s ease-out both;
     }
 
-    .intake-form__fields > *:nth-child(1) {
-      animation-delay: 0ms;
-    }
-    .intake-form__fields > *:nth-child(2) {
-      animation-delay: 60ms;
-    }
-    .intake-form__fields > *:nth-child(3) {
-      animation-delay: 120ms;
-    }
-    .intake-form__fields > *:nth-child(4) {
-      animation-delay: 180ms;
-    }
+    .intake-form__fields > *:nth-child(1) { animation-delay: 0ms; }
+    .intake-form__fields > *:nth-child(2) { animation-delay: 60ms; }
+    .intake-form__fields > *:nth-child(3) { animation-delay: 120ms; }
+    .intake-form__fields > *:nth-child(4) { animation-delay: 180ms; }
 
     @keyframes intake-field-reveal {
-      from {
-        opacity: 0;
-        transform: translateY(4px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
+      from { opacity: 0; transform: translateY(4px); }
+      to   { opacity: 1; transform: translateY(0); }
     }
 
     .intake__treatment {
@@ -169,6 +174,8 @@ function readFileAsBase64(file: File): Promise<UploadedPhoto> {
   `,
 })
 export class IntakeTriage {
+  private readonly router = inject(Router);
+
   protected readonly uploadedPhoto = signal<UploadedPhoto | undefined>(undefined);
   protected readonly completedSteps = signal<ReadonlySet<string>>(new Set());
 
@@ -189,11 +196,16 @@ export class IntakeTriage {
     return body ?? { code: 'UPSTREAM_ERROR', message: 'Something went wrong assessing that photo.' };
   });
 
-  /** Resets to the newest resolved case file whenever a new triage completes, while
-   * surviving unrelated re-renders in between — that's the whole point of linkedSignal
-   * over a plain computed(): edits made via the form below aren't wiped by re-evaluation
-   * unless the underlying resource value itself changes (AC-1.3). */
-  protected readonly caseFile = linkedSignal<CaseFile>(() => this.triageResource.value() ?? EMPTY_CASE_FILE);
+  protected readonly rosterAnimal = signal<Animal | undefined>(
+    'id' in (history.state ?? {}) ? (history.state as Animal) : undefined,
+  );
+
+  /** Resets to the newest resolved value whenever triageResource fires OR initializes from
+   * roster navigation state — two sources, one reactive form. The edits survive re-renders
+   * unless the underlying resource value itself changes (linkedSignal's whole point). */
+  protected readonly caseFile = linkedSignal<CaseFile>(
+    () => this.triageResource.value() ?? toPartialCaseFile(this.rosterAnimal()) ?? EMPTY_CASE_FILE,
+  );
 
   /** Template binds directly to each field's FieldState.value (e.g. [(value)]="intakeForm.species().value")
    * rather than importing Angular's own `Field`/`FormField` directives from '@angular/forms/signals' —
@@ -232,5 +244,9 @@ export class IntakeTriage {
   protected clear(): void {
     this.uploadedPhoto.set(undefined);
     this.completedSteps.set(new Set());
+  }
+
+  protected backToRoster(): void {
+    this.router.navigate(['/roster']);
   }
 }

@@ -2,8 +2,13 @@ import { Routes } from '@angular/router';
 
 export const routes: Routes = [
   {
-      path: 'component-harness',
-    loadComponent: () => import('./component-harness/component-harness').then((m) => m.ComponentHarness),
+    path: 'component-harness',
+    loadComponent: () =>
+      import('./component-harness/component-harness').then((m) => m.ComponentHarness),
+  },
+  {
+    path: 'roster',
+    loadComponent: () => import('./features/roster/roster').then((m) => m.Roster),
   },
   {
     path: 'concierge',

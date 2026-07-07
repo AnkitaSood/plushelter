@@ -1,15 +1,7 @@
 import { Service } from '@angular/core';
 import { Observable } from 'rxjs';
-
-export interface Animal {
-  id: string;
-  name: string;
-  species: string;
-  condition: string;
-  backstory?: string;
-  photoUrl?: string;
-  available: boolean;
-}
+export type { Animal } from '../../data/roster';
+import type { Animal } from '../../data/roster';
 
 export interface ChatTokenEvent {
   type: 'token';

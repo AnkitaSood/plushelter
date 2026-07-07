@@ -99,7 +99,7 @@ import { Animal, MOCK_ANIMALS } from '../../data/roster';
 
     .roster__filter-name {
       font-family: var(--font-mono);
-      font-size: var(--text-xs);
+      font-size: var(--text-base);
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
@@ -123,7 +123,7 @@ import { Animal, MOCK_ANIMALS } from '../../data/roster';
     .roster__empty {
       margin: 0;
       font-family: var(--font-mono);
-      font-size: var(--text-xs);
+      font-size: var(--text-base);
       text-transform: uppercase;
       letter-spacing: 0.05em;
       opacity: 0.6;

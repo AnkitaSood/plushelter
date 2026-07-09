@@ -3,6 +3,19 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { Roster } from './roster';
 import { MOCK_ANIMALS } from '../../data/roster';
+import type { Animal } from '../../data/roster';
+import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
+
+const UNDER_REPAIR_ANIMAL: Animal = {
+  id: 'ur-1',
+  name: 'Patches',
+  species: 'Bear',
+  condition: 'Torn seam',
+  backstory: '',
+  photoUrl: '/images/under-repair.svg',
+  available: false,
+  underRepair: true,
+};
 
 describe('Roster', () => {
   async function setup() {
@@ -15,8 +28,9 @@ describe('Roster', () => {
     return fixture.componentInstance as unknown as {
       speciesFilter: { set(v: string): void; (): string };
       statusFilter: { set(v: 'all' | 'available'): void; (): 'all' | 'available' };
-      filteredAnimals: () => typeof MOCK_ANIMALS;
+      filteredAnimals: () => Animal[];
       speciesOptions: () => string[];
+      statusLabel: (animal: Animal) => string;
     };
   }
 
@@ -53,5 +67,34 @@ describe('Roster', () => {
     for (const a of MOCK_ANIMALS) {
       expect(options).toContain(a.species);
     }
+  });
+
+  it('includes animals admitted to the store', async () => {
+    const component = await setup();
+    TestBed.inject(AdmittedAnimalsStore).admit(UNDER_REPAIR_ANIMAL);
+    expect(component.filteredAnimals().map((a) => a.id)).toContain('ur-1');
+  });
+
+  it('applies the species filter to admitted animals too', async () => {
+    const component = await setup();
+    TestBed.inject(AdmittedAnimalsStore).admit(UNDER_REPAIR_ANIMAL);
+    component.speciesFilter.set('Octopus');
+    expect(component.filteredAnimals().map((a) => a.id)).not.toContain('ur-1');
+  });
+
+  it('hides under-repair admits under the available-only filter', async () => {
+    const component = await setup();
+    TestBed.inject(AdmittedAnimalsStore).admit(UNDER_REPAIR_ANIMAL);
+    component.statusFilter.set('available');
+    expect(component.filteredAnimals().map((a) => a.id)).not.toContain('ur-1');
+  });
+
+  it('labels under-repair animals distinctly from pending clearance', async () => {
+    const component = await setup();
+    expect(component.statusLabel(UNDER_REPAIR_ANIMAL)).toBe('Under repair — check back soon');
+    expect(component.statusLabel({ ...UNDER_REPAIR_ANIMAL, underRepair: false })).toBe('Pending clearance');
+    expect(component.statusLabel({ ...UNDER_REPAIR_ANIMAL, available: true, underRepair: false })).toBe(
+      'Cleared for placement',
+    );
   });
 });

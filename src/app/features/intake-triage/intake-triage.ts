@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, linkedSignal, signal } from '@angular/core';
+import { Component, computed, inject, linkedSignal, signal } from '@angular/core';
 import { httpResource } from '@angular/common/http';
 import { form } from '@angular/forms/signals';
 import { Router } from '@angular/router';
@@ -8,6 +8,8 @@ import { ChecklistItem } from '../../ui/checklist-item/checklist-item';
 import { FormField } from '../../ui/form-field/form-field';
 import { StatusBadge } from '../../ui/status-badge/status-badge';
 import type { Animal } from '../../data/roster';
+import { UNDER_REPAIR_PLACEHOLDER } from '../../data/roster';
+import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
 
 interface CaseFile {
   species: string;
@@ -44,6 +46,25 @@ function readFileAsBase64(file: File): Promise<UploadedPhoto> {
   });
 }
 
+/** Builds a not-yet-cleared roster animal from the reviewed intake fields. The uploaded photo
+ * is never carried over — a shared placeholder stands in until the stuffy is "repaired". */
+export function caseFileToUnderRepairAnimal(fields: {
+  name: string;
+  species: string;
+  condition: string;
+}): Animal {
+  return {
+    id: crypto.randomUUID(),
+    name: fields.name || 'Unnamed case',
+    species: fields.species,
+    condition: fields.condition,
+    backstory: '',
+    photoUrl: UNDER_REPAIR_PLACEHOLDER,
+    available: false,
+    underRepair: true,
+  };
+}
+
 export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefined {
   if (!animal) return undefined;
   return {
@@ -57,7 +78,6 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
 
 @Component({
   selector: 'app-intake-triage',
-  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Button, CaseFileCard, ChecklistItem, FormField, StatusBadge],
   template: `
     <section class="intake">
@@ -105,11 +125,16 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
       }
 
       @if (triageResource.hasValue() || triageError() || rosterAnimal()) {
-        @if (rosterAnimal()) {
-          <app-button type="button" variant="secondary" (click)="backToRoster()">← Back to Roster</app-button>
-        } @else {
-          <app-button type="button" variant="secondary" (click)="clear()">Start over</app-button>
-        }
+        <div class="intake__actions">
+          @if (rosterAnimal()) {
+            <app-button type="button" variant="secondary" (click)="backToRoster()">← Back to Roster</app-button>
+          } @else {
+            @if (triageResource.hasValue()) {
+              <app-button type="button" (click)="admit()">Admit to shelter</app-button>
+            }
+            <app-button type="button" variant="secondary" (click)="clear()">Start over</app-button>
+          }
+        </div>
       }
     </section>
   `,
@@ -172,10 +197,18 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
       font-size: var(--text-lg);
       margin: 0;
     }
+
+    .intake__actions {
+      display: flex;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+      align-items: center;
+    }
   `,
 })
 export class IntakeTriage {
   private readonly router = inject(Router);
+  private readonly admittedStore = inject(AdmittedAnimalsStore);
 
   protected readonly uploadedPhoto = signal<UploadedPhoto | undefined>(undefined);
   protected readonly completedSteps = signal<ReadonlySet<string>>(new Set());
@@ -248,6 +281,18 @@ export class IntakeTriage {
   }
 
   protected backToRoster(): void {
+    this.router.navigate(['/roster']);
+  }
+
+  /** Commits the reviewed case file to the roster as an under-repair animal, then shows it. */
+  protected admit(): void {
+    this.admittedStore.admit(
+      caseFileToUnderRepairAnimal({
+        name: this.intakeForm.suggestedCaseName().value(),
+        species: this.intakeForm.species().value(),
+        condition: this.intakeForm.condition().value(),
+      }),
+    );
     this.router.navigate(['/roster']);
   }
 }

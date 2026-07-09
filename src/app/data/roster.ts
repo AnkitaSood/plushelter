@@ -6,7 +6,12 @@ export interface Animal {
   backstory: string;
   photoUrl?: string;
   available: boolean;
+  /** True for a freshly-admitted intake case that is not yet cleared for adoption. */
+  underRepair?: boolean;
 }
+
+/** Shared placeholder shown for every under-repair (freshly admitted) animal. */
+export const UNDER_REPAIR_PLACEHOLDER = '/images/under-repair.svg';
 
 export const MOCK_ANIMALS: Animal[] = [
   {

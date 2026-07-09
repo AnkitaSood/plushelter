@@ -1,13 +1,13 @@
-import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
+import { Component, computed, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { inject } from '@angular/core';
 import { CaseFileCard } from '../../ui/case-file-card/case-file-card';
 import { StatusBadge } from '../../ui/status-badge/status-badge';
 import { Animal, MOCK_ANIMALS } from '../../data/roster';
+import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
 
 @Component({
   selector: 'app-roster',
-  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CaseFileCard, StatusBadge],
   template: `
     <section class="roster">
@@ -55,11 +55,12 @@ import { Animal, MOCK_ANIMALS } from '../../data/roster';
               [title]="animal.name"
               [subtitle]="animal.species + ' · ' + animal.condition"
               [description]="animal.backstory"
+              [imageUrl]="animal.photoUrl"
               [clickable]="animal.available"
               (activated)="onAdopt(animal)"
             >
               <app-status-badge [status]="animal.available ? 'available' : 'pending'">
-                {{ animal.available ? 'Cleared for placement' : 'Pending clearance' }}
+                {{ statusLabel(animal) }}
               </app-status-badge>
             </app-case-file-card>
           } @placeholder {
@@ -146,6 +147,7 @@ import { Animal, MOCK_ANIMALS } from '../../data/roster';
 })
 export class Roster {
   private readonly router = inject(Router);
+  private readonly admittedStore = inject(AdmittedAnimalsStore);
 
   protected readonly speciesFilter = signal<string>('');
   protected readonly statusFilter = signal<'all' | 'available'>('all');
@@ -155,10 +157,15 @@ export class Roster {
   );
 
   protected readonly filteredAnimals = computed(() =>
-    MOCK_ANIMALS.filter((a) => !this.speciesFilter() || a.species === this.speciesFilter()).filter(
-      (a) => this.statusFilter() === 'all' || a.available,
-    ),
+    [...MOCK_ANIMALS, ...this.admittedStore.admitted()]
+      .filter((a) => !this.speciesFilter() || a.species === this.speciesFilter())
+      .filter((a) => this.statusFilter() === 'all' || a.available),
   );
+
+  protected statusLabel(animal: Animal): string {
+    if (animal.underRepair) return 'Under repair — check back soon';
+    return animal.available ? 'Cleared for placement' : 'Pending clearance';
+  }
 
   protected onAdopt(animal: Animal): void {
     this.router.navigate(['/'], { state: animal });

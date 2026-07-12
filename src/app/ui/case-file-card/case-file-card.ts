@@ -17,7 +17,7 @@ import { NgOptimizedImage, NgTemplateOutlet } from '@angular/common';
 
     <ng-template #body>
       @if (imageUrl(); as src) {
-        <img [ngSrc]="src" width="320" height="200" class="case-file-card__image" />
+        <img [ngSrc]="src" width="320" height="200" class="case-file-card__image" alt="animal image"/>
       }
       <div class="case-file-card__content">
         <h3 class="case-file-card__title">{{ title() }}</h3>
@@ -61,7 +61,7 @@ import { NgOptimizedImage, NgTemplateOutlet } from '@angular/common';
       display: block;
       width: 100%;
       height: 10rem;
-      object-fit: cover;
+      object-fit: scale-down;
       border-bottom: var(--border-width) solid var(--border-color);
     }
 

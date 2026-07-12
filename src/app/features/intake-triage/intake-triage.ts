@@ -92,8 +92,7 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
       <h1>Intake Vision Triage</h1>
       <p class="intake__intro">
         Describe the surrender situation and upload a photo of the stuffed animal. Once both are in,
-        S.A.R.F.'s intake counselor reviews the photo and the situation together to produce a case file
-        and a surrender risk assessment.
+        S.A.R.F.'s intake counselor reviews the photo and the situation together to produce a case file.
       </p>
 
       @if (!rosterAnimal()) {
@@ -328,8 +327,7 @@ export class IntakeTriage {
   );
 
   /** Resets to the newest resolved value whenever triageResource fires OR initializes from
-   * roster navigation state — two sources, one reactive form. The edits survive re-renders
-   * unless the underlying resource value itself changes (linkedSignal's whole point). */
+   * roster navigation state. The edits survive re-renders unless the underlying resource value itself changes. */
   protected readonly caseFile = linkedSignal<CaseFile>(
     () => this.triageResource.value() ?? toPartialCaseFile(this.rosterAnimal()) ?? EMPTY_CASE_FILE,
   );

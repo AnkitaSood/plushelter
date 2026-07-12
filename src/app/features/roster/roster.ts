@@ -153,7 +153,7 @@ export class Roster {
   protected readonly statusFilter = signal<'all' | 'available'>('all');
 
   protected readonly speciesOptions = computed(() =>
-    [...new Set(MOCK_ANIMALS.map((a) => a.species))].sort(),
+    [...new Set([...MOCK_ANIMALS, ...this.admittedStore.admitted()].map((a) => a.species))].sort(),
   );
 
   protected readonly filteredAnimals = computed(() =>

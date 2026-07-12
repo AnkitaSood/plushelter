@@ -6,6 +6,8 @@ import { Button } from '../../ui/button/button';
 import { ChecklistItem } from '../../ui/checklist-item/checklist-item';
 import { FormField } from '../../ui/form-field/form-field';
 import { StatusBadge } from '../../ui/status-badge/status-badge';
+import { TextareaField } from '../../ui/textarea-field/textarea-field';
+import { CritterLoader } from '../../ui/critter-loader/critter-loader';
 import type { Animal } from '../../data/roster';
 import { UNDER_REPAIR_PLACEHOLDER } from '../../data/roster';
 import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
@@ -86,7 +88,7 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
 
 @Component({
   selector: 'app-intake-triage',
-  imports: [Button, ChecklistItem, FormField, StatusBadge],
+  imports: [Button, ChecklistItem, FormField, StatusBadge, TextareaField, CritterLoader],
   template: `
     <section class="intake">
       <h1>Intake Vision Triage</h1>
@@ -97,16 +99,11 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
 
       @if (!rosterAnimal()) {
         <div class="intake__upload">
-          <label for="surrender-risk-text" class="intake__label">Surrender Risk Assessment</label>
-          <textarea
-            id="surrender-risk-text"
-            class="intake__textarea"
-            rows="4"
-            required
-            [value]="surrenderRiskText()"
-            (input)="surrenderRiskText.set($any($event.target).value)"
+          <app-textarea-field
+            label="Surrender Risk Assessment"
+            [(value)]="surrenderRiskText"
             placeholder="Describe the surrendering owner's situation…"
-          ></textarea>
+          />
           <input #fileInput type="file" accept="image/*" class="intake__file-input" (change)="onPhotoSelected($event)" />
           <app-button type="button" (click)="fileInput.click()">Upload a photo</app-button>
           @if (uploadedPhoto() && !surrenderRiskText().trim()) {
@@ -115,8 +112,16 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
         </div>
       }
 
-      @if (triageResource.isLoading()) {
-        <app-status-badge status="pending">Assessing photo…</app-status-badge>
+      @if (triageResource.isLoading() || surrenderRiskResource.isLoading()) {
+        <div class="intake__loading">
+          <app-critter-loader />
+          @if (triageResource.isLoading()) {
+            <p class="intake__loading-text">Triaging image</p>
+          }
+          @if (surrenderRiskResource.isLoading()) {
+            <p class="intake__loading-text">Analyzing surrender reason</p>
+          }
+        </div>
       }
 
       @if (triageError(); as triageErr) {
@@ -132,13 +137,10 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
           <form class="intake-form">
             <div class="intake-form__fields">
               <app-form-field label="Species" [(value)]="intakeForm.species().value" />
-              <app-form-field label="Condition" [(value)]="intakeForm.condition().value" />
+              <app-textarea-field label="Condition" [(value)]="intakeForm.condition().value" />
               <app-form-field label="Case name" [(value)]="intakeForm.suggestedCaseName().value" />
               <app-form-field label="Huggability score" type="number" [value]="scoreFieldText()" (valueChange)="onScoreInput($event)" />
-              <div class="intake-form__field">
-                <label for="surrender-risk-result" class="intake__label">Surrender risk assessment</label>
-                <textarea id="surrender-risk-result" class="intake__textarea" rows="3" readonly>{{ surrenderRiskDisplay() }}</textarea>
-              </div>
+              <app-textarea-field label="Surrender risk assessment" [value]="surrenderRiskDisplay()" [readonly]="true" />
             </div>
           </form>
 
@@ -188,28 +190,24 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
       align-items: flex-start;
     }
 
-    .intake__label {
+    .intake__file-input {
+      display: none;
+    }
+
+    .intake__loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-1);
+    }
+
+    .intake__loading-text {
+      margin: 0;
       font-family: var(--font-mono);
       font-size: var(--text-xs);
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      color: var(--color-ink);
-    }
-
-    .intake__textarea {
-      width: 100%;
-      font-family: var(--font-body);
-      font-size: var(--text-base);
-      color: var(--color-ink);
-      background: var(--color-bg);
-      border: var(--border-width) solid var(--border-color);
-      border-radius: var(--radius-sm);
-      padding: var(--space-3);
-      resize: vertical;
-    }
-
-    .intake__file-input {
-      display: none;
+      opacity: 0.75;
     }
 
     .intake__layout {
@@ -222,12 +220,6 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
       display: flex;
       flex-direction: column;
       gap: var(--space-3);
-    }
-
-    .intake-form__field {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-1);
     }
 
     .intake-form__fields > * {

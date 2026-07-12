@@ -4,6 +4,7 @@ import { scan, tap } from 'rxjs';
 import { Button } from '../../ui/button/button';
 import { CaseFileCard } from '../../ui/case-file-card/case-file-card';
 import { ChatBubble } from '../../ui/chat-bubble/chat-bubble';
+import { CritterLoader } from '../../ui/critter-loader/critter-loader';
 import { FormField } from '../../ui/form-field/form-field';
 import { StatusBadge } from '../../ui/status-badge/status-badge';
 import { Animal, ChatSseEvent, ConciergeChatService } from './concierge-chat.service';
@@ -29,7 +30,7 @@ let nextRequestId = 0;
 
 @Component({
   selector: 'app-concierge',
-  imports: [Button, CaseFileCard, ChatBubble, FormField, StatusBadge],
+  imports: [Button, CaseFileCard, ChatBubble, CritterLoader, FormField, StatusBadge],
   template: `
     <section class="concierge">
       <h1>Adoption Concierge</h1>
@@ -39,7 +40,11 @@ let nextRequestId = 0;
           <app-chat-bubble [role]="turn.role" [content]="turn.content" />
         }
         @if (isStreaming()) {
-          <app-chat-bubble role="concierge" [content]="streamingText() || '…'" />
+          @if (streamingText(); as text) {
+            <app-chat-bubble role="concierge" [content]="text" />
+          } @else {
+            <app-critter-loader />
+          }
         }
       </div>
 

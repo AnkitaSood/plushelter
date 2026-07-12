@@ -3,7 +3,6 @@ import { httpResource } from '@angular/common/http';
 import { form } from '@angular/forms/signals';
 import { Router } from '@angular/router';
 import { Button } from '../../ui/button/button';
-import { CaseFileCard } from '../../ui/case-file-card/case-file-card';
 import { ChecklistItem } from '../../ui/checklist-item/checklist-item';
 import { FormField } from '../../ui/form-field/form-field';
 import { StatusBadge } from '../../ui/status-badge/status-badge';
@@ -25,6 +24,15 @@ interface UploadedPhoto {
 }
 
 interface TriageErrorBody {
+  error: { code: string; message: string };
+}
+
+interface GuiltAnalysis {
+  guiltScore: number;
+  message: string;
+}
+
+interface SurrenderRiskErrorBody {
   error: { code: string; message: string };
 }
 
@@ -78,15 +86,33 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
 
 @Component({
   selector: 'app-intake-triage',
-  imports: [Button, CaseFileCard, ChecklistItem, FormField, StatusBadge],
+  imports: [Button, ChecklistItem, FormField, StatusBadge],
   template: `
     <section class="intake">
       <h1>Intake Vision Triage</h1>
+      <p class="intake__intro">
+        Describe the surrender situation and upload a photo of the stuffed animal. Once both are in,
+        S.A.R.F.'s intake counselor reviews the photo and the situation together to produce a case file
+        and a surrender risk assessment.
+      </p>
 
       @if (!rosterAnimal()) {
         <div class="intake__upload">
+          <label for="surrender-risk-text" class="intake__label">Surrender Risk Assessment</label>
+          <textarea
+            id="surrender-risk-text"
+            class="intake__textarea"
+            rows="4"
+            required
+            [value]="surrenderRiskText()"
+            (input)="surrenderRiskText.set($any($event.target).value)"
+            placeholder="Describe the surrendering owner's situation…"
+          ></textarea>
           <input #fileInput type="file" accept="image/*" class="intake__file-input" (change)="onPhotoSelected($event)" />
           <app-button type="button" (click)="fileInput.click()">Upload a photo</app-button>
+          @if (uploadedPhoto() && !surrenderRiskText().trim()) {
+            <app-status-badge status="pending">Surrender Risk Assessment is required before triage can begin.</app-status-badge>
+          }
         </div>
       }
 
@@ -98,6 +124,10 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
         <app-status-badge status="critical">{{ triageErr.message }}</app-status-badge>
       }
 
+      @if (surrenderRiskError(); as riskErr) {
+        <app-status-badge status="critical">{{ riskErr.message }}</app-status-badge>
+      }
+
       @if (triageResource.hasValue() || rosterAnimal()) {
         <div class="intake__layout">
           <form class="intake-form">
@@ -106,6 +136,10 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
               <app-form-field label="Condition" [(value)]="intakeForm.condition().value" />
               <app-form-field label="Case name" [(value)]="intakeForm.suggestedCaseName().value" />
               <app-form-field label="Huggability score" type="number" [value]="scoreFieldText()" (valueChange)="onScoreInput($event)" />
+              <div class="intake-form__field">
+                <label for="surrender-risk-result" class="intake__label">Surrender risk assessment</label>
+                <textarea id="surrender-risk-result" class="intake__textarea" rows="3" readonly>{{ surrenderRiskDisplay() }}</textarea>
+              </div>
             </div>
           </form>
 
@@ -115,12 +149,6 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
               <app-checklist-item [label]="step" [checked]="isStepDone(step)" (checkedChange)="setStepDone(step, $event)" />
             }
           </div>
-
-          <app-case-file-card
-            [title]="intakeForm.suggestedCaseName().value() || 'Unnamed case'"
-            [subtitle]="intakeForm.species().value() + ' · ' + intakeForm.condition().value()"
-            [description]="'Huggability score: ' + scoreFieldText()"
-          />
         </div>
       }
 
@@ -150,10 +178,35 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
       color: var(--color-ink);
     }
 
+    .intake__intro {
+      margin: 0;
+    }
+
     .intake__upload {
       display: flex;
       flex-direction: column;
       gap: var(--space-2);
+      align-items: flex-start;
+    }
+
+    .intake__label {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-ink);
+    }
+
+    .intake__textarea {
+      width: 100%;
+      font-family: var(--font-body);
+      font-size: var(--text-base);
+      color: var(--color-ink);
+      background: var(--color-bg);
+      border: var(--border-width) solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: var(--space-3);
+      resize: vertical;
     }
 
     .intake__file-input {
@@ -172,6 +225,12 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
       gap: var(--space-3);
     }
 
+    .intake-form__field {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+    }
+
     .intake-form__fields > * {
       animation: intake-field-reveal 0.25s ease-out both;
     }
@@ -180,6 +239,7 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
     .intake-form__fields > *:nth-child(2) { animation-delay: 60ms; }
     .intake-form__fields > *:nth-child(3) { animation-delay: 120ms; }
     .intake-form__fields > *:nth-child(4) { animation-delay: 180ms; }
+    .intake-form__fields > *:nth-child(5) { animation-delay: 240ms; }
 
     @keyframes intake-field-reveal {
       from { opacity: 0; transform: translateY(4px); }
@@ -211,16 +271,49 @@ export class IntakeTriage {
   private readonly admittedStore = inject(AdmittedAnimalsStore);
 
   protected readonly uploadedPhoto = signal<UploadedPhoto | undefined>(undefined);
+  protected readonly surrenderRiskText = signal('');
   protected readonly completedSteps = signal<ReadonlySet<string>>(new Set());
 
-  protected readonly triageResource = httpResource<CaseFile>(() => {
+  /** Triage (both the vision assessment and the surrender-risk read) only starts once
+   * the photo AND the surrender-risk description are both present — neither resource
+   * fires on its own. */
+  private readonly triageInputs = computed(() => {
     const photo = this.uploadedPhoto();
-    if (!photo) return undefined;
+    const situation = this.surrenderRiskText().trim();
+    return photo && situation ? { photo, situation } : undefined;
+  });
+
+  protected readonly triageResource = httpResource<CaseFile>(() => {
+    const inputs = this.triageInputs();
+    if (!inputs) return undefined;
     return {
       url: '/api/intake-triage',
       method: 'POST',
-      body: { photoBase64: photo.base64, mimeType: photo.mimeType },
+      body: { photoBase64: inputs.photo.base64, mimeType: inputs.photo.mimeType },
     };
+  });
+
+  protected readonly surrenderRiskResource = httpResource<GuiltAnalysis>(() => {
+    const inputs = this.triageInputs();
+    if (!inputs) return undefined;
+    return {
+      url: '/api/surrender-analysis',
+      method: 'POST',
+      body: { submittedText: inputs.situation },
+    };
+  });
+
+  protected readonly surrenderRiskError = computed(() => {
+    const error = this.surrenderRiskResource.error();
+    if (!error) return undefined;
+    const body = (error as { error?: SurrenderRiskErrorBody })?.error?.error;
+    return body ?? { code: 'UPSTREAM_ERROR', message: 'Something went wrong assessing surrender risk.' };
+  });
+
+  protected readonly surrenderRiskDisplay = computed(() => {
+    if (this.surrenderRiskResource.isLoading()) return 'Assessing…';
+    const value = this.surrenderRiskResource.value();
+    return value ? `${value.guiltScore}/100 — ${value.message}` : '';
   });
 
   protected readonly triageError = computed(() => {
@@ -277,6 +370,7 @@ export class IntakeTriage {
 
   protected clear(): void {
     this.uploadedPhoto.set(undefined);
+    this.surrenderRiskText.set('');
     this.completedSteps.set(new Set());
   }
 

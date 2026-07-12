@@ -31,8 +31,6 @@
   color: var(--color-ink);
 }
 
-/* ── App nav shell ───────────────────────────────────────────── */
-
 .app-nav {
   display: flex;
   align-items: center;

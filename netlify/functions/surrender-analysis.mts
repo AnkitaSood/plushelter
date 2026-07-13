@@ -1,4 +1,4 @@
-import { Context } from '@netlify/functions';
+import type { Context } from '@netlify/functions';
 import { isDemoMode, DEMO_RESPONSES } from '../shared/demo-mode.mts';
 
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/interactions';
@@ -7,7 +7,7 @@ const GEMINI_API_REVISION = '2026-05-20';
 /** Demo model is gemini-3.5-flash (specs.md §5). Override via GEMINI_TEST_MODEL in .env.local
  * to point real-API test calls at a cheaper model without touching this file. */
 function resolveModel(): string {
-  return Netlify.env.get('GEMINI_TEST_MODEL') || 'gemini-3.1-flash-lite';
+  return process.env.GEMINI_TEST_MODEL || Netlify.env?.get('GEMINI_TEST_MODEL') || 'gemini-3.1-flash-lite';
 }
 
 const GUILT_ANALYSIS_SCHEMA = {

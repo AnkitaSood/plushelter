@@ -1,4 +1,4 @@
-import { Context } from '@netlify/functions';
+import type { Context } from '@netlify/functions';
 import { isDemoMode, DEMO_RESPONSES } from '../shared/demo-mode.mts';
 
 export default async (req: Request, context: Context) => {

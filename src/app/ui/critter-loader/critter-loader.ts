@@ -4,9 +4,8 @@ import { Component } from '@angular/core';
  * in sequence, nose to tail, so the eye reads it as motion/progress rather than a static spinner. */
 @Component({
   selector: 'app-critter-loader',
-  imports: [],
   template: `
-    <div class="critter-loader" role="status" aria-hidden="true">
+    <div class="critter-loader" role="status">
       @for (critter of critters; track $index) {
         <span class="critter-loader__critter" [style.animation-delay.ms]="$index * 120">{{ critter }}</span>
       }

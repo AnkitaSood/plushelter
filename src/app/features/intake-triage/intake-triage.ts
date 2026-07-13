@@ -2,49 +2,17 @@ import { Component, computed, inject, linkedSignal, signal } from '@angular/core
 import { httpResource } from '@angular/common/http';
 import { form } from '@angular/forms/signals';
 import { Router } from '@angular/router';
+import { Dialog } from '@angular/cdk/dialog';
 import { Button } from '../../ui/button/button';
 import { ChecklistItem } from '../../ui/checklist-item/checklist-item';
 import { FormField } from '../../ui/form-field/form-field';
 import { StatusBadge } from '../../ui/status-badge/status-badge';
 import { TextareaField } from '../../ui/textarea-field/textarea-field';
 import { CritterLoader } from '../../ui/critter-loader/critter-loader';
+import { ConfirmDialog } from '../../ui/confirm-dialog/confirm-dialog';
 import type { Animal } from '../../data/roster';
 import { UNDER_REPAIR_PLACEHOLDER } from '../../data/roster';
 import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
-
-interface CaseFile {
-  species: string;
-  condition: string;
-  suggestedCaseName: string;
-  huggabilityScore: number;
-  recommendedTreatmentPlan: string[];
-}
-
-interface UploadedPhoto {
-  base64: string;
-  mimeType: string;
-}
-
-interface TriageErrorBody {
-  error: { code: string; message: string };
-}
-
-interface GuiltAnalysis {
-  guiltScore: number;
-  message: string;
-}
-
-interface SurrenderRiskErrorBody {
-  error: { code: string; message: string };
-}
-
-const EMPTY_CASE_FILE: CaseFile = {
-  species: '',
-  condition: '',
-  suggestedCaseName: '',
-  huggabilityScore: 0,
-  recommendedTreatmentPlan: [],
-};
 
 /** Strips the `data:<mime>;base64,` prefix FileReader adds — the backend wants raw base64. */
 function readFileAsBase64(file: File): Promise<UploadedPhoto> {
@@ -87,7 +55,6 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
 }
 
 @Component({
-  selector: 'app-intake-triage',
   imports: [Button, ChecklistItem, FormField, StatusBadge, TextareaField, CritterLoader],
   template: `
     <section class="intake">
@@ -260,6 +227,7 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
 export class IntakeTriage {
   private readonly router = inject(Router);
   private readonly admittedStore = inject(AdmittedAnimalsStore);
+  private readonly dialog = inject(Dialog);
 
   protected readonly uploadedPhoto = signal<UploadedPhoto | undefined>(undefined);
   protected readonly surrenderRiskText = signal('');
@@ -368,15 +336,32 @@ export class IntakeTriage {
     this.router.navigate(['/roster']);
   }
 
-  /** Commits the reviewed case file to the roster as an under-repair animal, then shows it. */
+  /** Confirms, then commits the reviewed case file to the roster as an under-repair animal. */
   protected admit(): void {
-    this.admittedStore.admit(
-      caseFileToUnderRepairAnimal({
-        name: this.intakeForm.suggestedCaseName().value(),
-        species: this.intakeForm.species().value(),
-        condition: this.intakeForm.condition().value(),
-      }),
-    );
-    this.router.navigate(['/roster']);
+    const caseName = this.intakeForm.suggestedCaseName().value() || 'this case';
+    const ref = this.dialog.open<boolean>(ConfirmDialog, {
+      data: {
+        title: 'Confirm admission',
+        message: `This will admit ${caseName} to the shelter roster as under repair. Continue?`,
+        confirmLabel: 'Admit',
+        cancelLabel: 'Cancel',
+      },
+      ariaModal: true,
+      ariaLabelledBy: 'confirm-dialog-title',
+      ariaDescribedBy: 'confirm-dialog-message',
+      backdropClass: 'app-dialog-backdrop',
+    });
+
+    ref.closed.subscribe((confirmed) => {
+      if (!confirmed) return;
+      this.admittedStore.admit(
+        caseFileToUnderRepairAnimal({
+          name: this.intakeForm.suggestedCaseName().value(),
+          species: this.intakeForm.species().value(),
+          condition: this.intakeForm.condition().value(),
+        }),
+      );
+      this.router.navigate(['/roster']);
+    });
   }
 }

@@ -189,7 +189,7 @@ export default async (req: Request) => {
             });
 
             if (functionCall) {
-              const matchedAnimals = searchRoster((functionCall.arguments.criteria as string) ?? body.message);
+              const candidateAnimals = searchRoster((functionCall.arguments.criteria as string) ?? body.message);
 
               await streamGeminiTurn(controller, apiKey, {
                 model,
@@ -199,13 +199,16 @@ export default async (req: Request) => {
                   type: 'function_result',
                   name: functionCall.name,
                   call_id: functionCall.id,
-                  result: [{ type: 'text', text: JSON.stringify(matchedAnimals) }]
+                  result: [{ type: 'text', text: JSON.stringify(candidateAnimals) }]
                 }]
               });
 
+              // The candidate pool may be broader than what Gemini actually recommends in
+              // prose (see AnimalMatchFilter on the frontend, which narrows it down to the
+              // animals named in the reply) — this event carries the full candidate set.
               controller.enqueue(sseEvent('tool_result', {
                 toolName: 'searchAvailableAnimals',
-                animals: matchedAnimals
+                animals: candidateAnimals
               }));
             }
 

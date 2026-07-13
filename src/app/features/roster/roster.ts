@@ -7,7 +7,6 @@ import { Animal, MOCK_ANIMALS } from '../../data/roster';
 import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
 
 @Component({
-  selector: 'app-roster',
   imports: [CaseFileCard, StatusBadge],
   template: `
     <section class="roster">

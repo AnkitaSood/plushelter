@@ -7,11 +7,11 @@ import { NgOptimizedImage, NgTemplateOutlet } from '@angular/common';
   template: `
     @if (clickable()) {
       <button type="button" class="case-file-card" (click)="activated.emit()">
-        <ng-container *ngTemplateOutlet="body" />
+        <ng-container [ngTemplateOutlet]="body" />
       </button>
     } @else {
       <article class="case-file-card">
-        <ng-container *ngTemplateOutlet="body" />
+        <ng-container [ngTemplateOutlet]="body" />
       </article>
     }
 

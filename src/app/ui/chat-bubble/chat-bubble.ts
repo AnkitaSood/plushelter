@@ -2,7 +2,6 @@ import { Component, input } from '@angular/core';
 
 @Component({
   selector: 'app-chat-bubble',
-  imports: [],
   template: `
     <div class="chat-bubble" [class.chat-bubble--user]="role() === 'user'">
       <p class="chat-bubble__content" aria-live="polite">{{ content() }}</p>

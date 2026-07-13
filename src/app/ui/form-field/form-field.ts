@@ -4,7 +4,6 @@ let nextId = 0;
 
 @Component({
   selector: 'app-form-field',
-  imports: [],
   template: `
     <div class="form-field">
       <label [for]="id" class="form-field__label">{{ label() }}</label>

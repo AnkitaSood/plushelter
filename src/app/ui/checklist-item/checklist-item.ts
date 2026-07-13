@@ -2,7 +2,6 @@ import { Component, input, model } from '@angular/core';
 
 @Component({
   selector: 'app-checklist-item',
-  imports: [],
   template: `
     <label class="checklist-item">
       <input

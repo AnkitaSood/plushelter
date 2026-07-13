@@ -7,6 +7,7 @@ import { ChatBubble } from '../../ui/chat-bubble/chat-bubble';
 import { CritterLoader } from '../../ui/critter-loader/critter-loader';
 import { FormField } from '../../ui/form-field/form-field';
 import { StatusBadge } from '../../ui/status-badge/status-badge';
+import { AnimalMatchFilter } from './animal-match-filter';
 import { Animal, ChatSseEvent, ConciergeChatService } from './concierge-chat.service';
 
 interface ChatTurn {
@@ -29,7 +30,6 @@ interface PendingChatRequest {
 let nextRequestId = 0;
 
 @Component({
-  selector: 'app-concierge',
   imports: [Button, CaseFileCard, ChatBubble, CritterLoader, FormField, StatusBadge],
   template: `
     <section class="concierge">
@@ -109,11 +109,15 @@ let nextRequestId = 0;
 })
 export class Concierge {
   private readonly chatService = inject(ConciergeChatService);
+  private readonly animalMatch = inject(AnimalMatchFilter);
   private lastFinalizedRequestId = -1;
 
   protected draft = signal('');
   protected history = signal<ChatTurn[]>([]);
-  protected matchedAnimals = signal<Animal[]>([]);
+  /** Raw candidate pool from the search tool — may be broader than what gets recommended. */
+  protected candidateAnimals = signal<Animal[]>([]);
+  /** The concierge's finalized reply text, held stable after the stream ends. */
+  protected lastReplyText = signal('');
   protected lastError = signal<{ code: string; message: string } | undefined>(undefined);
 
   private pendingRequest = signal<PendingChatRequest | undefined>(undefined);
@@ -124,7 +128,7 @@ export class Concierge {
       this.chatService.streamChat(params.message, params.previousInteractionId).pipe(
         tap((event) => {
           if (event.type === 'tool_result') {
-            this.matchedAnimals.set(event.animals);
+            this.candidateAnimals.set(event.animals);
           }
         }),
         scan(
@@ -148,6 +152,7 @@ export class Concierge {
   protected readonly streamingText = computed(() => this.chatStream.value()?.text ?? '');
   protected readonly isStreaming = computed(() => this.pendingRequest() !== undefined);
   protected readonly canSend = computed(() => this.draft().trim().length > 0);
+  protected readonly matchedAnimals = this.animalMatch.matchedAnimals(this.candidateAnimals, this.lastReplyText);
 
   constructor() {
     // Moves a finished stream's result into permanent history exactly once, whether it
@@ -161,6 +166,7 @@ export class Concierge {
       this.lastFinalizedRequestId = request.requestId;
       if (state.text) {
         this.history.update((turns) => [...turns, { role: 'concierge', content: state.text }]);
+        this.lastReplyText.set(state.text);
       }
       this.lastError.set(state.error);
       this.pendingRequest.set(undefined);
@@ -174,7 +180,8 @@ export class Concierge {
     if (!message) return;
 
     this.history.update((turns) => [...turns, { role: 'user', content: message }]);
-    this.matchedAnimals.set([]);
+    this.candidateAnimals.set([]);
+    this.lastReplyText.set('');
     this.lastError.set(undefined);
     this.draft.set('');
     this.pendingRequest.set({ message, requestId: nextRequestId++ });

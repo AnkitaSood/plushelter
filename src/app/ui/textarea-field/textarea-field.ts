@@ -2,11 +2,8 @@ import { Component, computed, input, model } from '@angular/core';
 
 let nextId = 0;
 
-/** Auto-growing textarea field — height always matches its content via the CSS
- * `field-sizing: content` property, no resize handle and no JS measuring needed. */
 @Component({
   selector: 'app-textarea-field',
-  imports: [],
   template: `
     <div class="textarea-field">
       <label [for]="id" class="textarea-field__label">{{ label() }}</label>

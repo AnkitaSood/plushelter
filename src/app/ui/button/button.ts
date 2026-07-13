@@ -2,7 +2,6 @@ import { Component, input } from '@angular/core';
 
 @Component({
   selector: 'app-button',
-  imports: [],
   template: `
     <button class="btn" [class.btn--secondary]="variant() === 'secondary'" [type]="type()" [disabled]="disabled()">
       <ng-content />

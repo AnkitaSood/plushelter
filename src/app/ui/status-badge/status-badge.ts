@@ -4,7 +4,6 @@ export type StatusBadgeStatus = 'available' | 'critical' | 'pending' | 'info' | 
 
 @Component({
   selector: 'app-status-badge',
-  imports: [],
   template: `
     <span class="badge" [class]="'badge--' + status()" role="status">
       <ng-content />

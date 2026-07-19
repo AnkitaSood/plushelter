@@ -2,9 +2,10 @@ import { Component, computed, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { inject } from '@angular/core';
 import { CaseFileCard } from '../../ui/case-file-card/case-file-card';
-import { StatusBadge } from '../../ui/status-badge/status-badge';
+import { StatusBadge, type StatusBadgeStatus } from '../../ui/status-badge/status-badge';
 import { Animal, MOCK_ANIMALS } from '../../data/roster';
 import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
+import { AdoptedAnimalsStore } from '../../data/adopted-animals-store';
 
 @Component({
   imports: [CaseFileCard, StatusBadge],
@@ -12,7 +13,7 @@ import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
     <section class="roster">
       <h1>Active Case Roster</h1>
       <p class="roster__intro">
-        Animals currently on file. Select a cleared case to begin placement intake.
+        Animals currently on file. Select a cleared case to begin adoption.
       </p>
 
       <div class="roster__filters">
@@ -55,10 +56,10 @@ import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
               [subtitle]="animal.species + ' · ' + animal.condition"
               [description]="animal.backstory"
               [imageUrl]="animal.photoUrl"
-              [clickable]="animal.available"
-              (activated)="onAdopt(animal)"
+              [clickable]="animal.available && !adoptedStore.isAdopted(animal.id)"
+              (activated)="beginAdoption(animal)"
             >
-              <app-status-badge [status]="animal.available ? 'available' : 'pending'">
+              <app-status-badge [status]="badgeStatus(animal)">
                 {{ statusLabel(animal) }}
               </app-status-badge>
             </app-case-file-card>
@@ -147,6 +148,7 @@ import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
 export class Roster {
   private readonly router = inject(Router);
   private readonly admittedStore = inject(AdmittedAnimalsStore);
+  protected readonly adoptedStore = inject(AdoptedAnimalsStore);
 
   protected readonly speciesFilter = signal<string>('');
   protected readonly statusFilter = signal<'all' | 'available'>('all');
@@ -162,11 +164,18 @@ export class Roster {
   );
 
   protected statusLabel(animal: Animal): string {
+    const adopterName = this.adoptedStore.getAdopterName(animal.id);
+    if (adopterName) return `Adopted by ${adopterName}`;
     if (animal.underRepair) return 'Under repair — check back soon';
     return animal.available ? 'Cleared for placement' : 'Pending clearance';
   }
 
-  protected onAdopt(animal: Animal): void {
-    this.router.navigate(['/'], { state: animal });
+  protected badgeStatus(animal: Animal): StatusBadgeStatus {
+    if (this.adoptedStore.isAdopted(animal.id)) return 'celebration';
+    return animal.available ? 'available' : 'pending';
+  }
+
+  protected beginAdoption(animal: Animal): void {
+    this.router.navigate(['/adopt'], { state: animal });
   }
 }

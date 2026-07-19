@@ -1,5 +1,5 @@
 
-interface CaseFile {
+export interface CaseFile {
   species: string;
   condition: string;
   suggestedCaseName: string;
@@ -7,25 +7,25 @@ interface CaseFile {
   recommendedTreatmentPlan: string[];
 }
 
-interface UploadedPhoto {
+export interface UploadedPhoto {
   base64: string;
   mimeType: string;
 }
 
-interface TriageErrorBody {
+export interface TriageErrorBody {
   error: { code: string; message: string };
 }
 
-interface GuiltAnalysis {
+export interface GuiltAnalysis {
   guiltScore: number;
   message: string;
 }
 
-interface SurrenderRiskErrorBody {
+export interface SurrenderRiskErrorBody {
   error: { code: string; message: string };
 }
 
-const EMPTY_CASE_FILE: CaseFile = {
+export const EMPTY_CASE_FILE: CaseFile = {
   species: '',
   condition: '',
   suggestedCaseName: '',

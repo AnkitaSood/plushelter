@@ -9,10 +9,17 @@ import { FormField } from '../../ui/form-field/form-field';
 import { StatusBadge } from '../../ui/status-badge/status-badge';
 import { TextareaField } from '../../ui/textarea-field/textarea-field';
 import { CritterLoader } from '../../ui/critter-loader/critter-loader';
-import { ConfirmDialog } from '../../ui/confirm-dialog/confirm-dialog';
 import type { Animal } from '../../data/roster';
 import { UNDER_REPAIR_PLACEHOLDER } from '../../data/roster';
 import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
+import {
+  EMPTY_CASE_FILE,
+  type CaseFile,
+  type GuiltAnalysis,
+  type SurrenderRiskErrorBody,
+  type TriageErrorBody,
+  type UploadedPhoto,
+} from './intake-triage.model';
 
 /** Strips the `data:<mime>;base64,` prefix FileReader adds — the backend wants raw base64. */
 function readFileAsBase64(file: File): Promise<UploadedPhoto> {
@@ -43,17 +50,6 @@ export function caseFileToUnderRepairAnimal(fields: {
   };
 }
 
-export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefined {
-  if (!animal) return undefined;
-  return {
-    suggestedCaseName: animal.name,
-    species: animal.species,
-    condition: animal.condition,
-    huggabilityScore: 0,
-    recommendedTreatmentPlan: [],
-  };
-}
-
 @Component({
   imports: [Button, ChecklistItem, FormField, StatusBadge, TextareaField, CritterLoader],
   template: `
@@ -64,20 +60,18 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
         S.A.R.F.'s intake counselor reviews the photo and the situation together to produce a case file.
       </p>
 
-      @if (!rosterAnimal()) {
-        <div class="intake__upload">
-          <app-textarea-field
-            label="Surrender Risk Assessment"
-            [(value)]="surrenderRiskText"
-            placeholder="Describe the surrendering owner's situation…"
-          />
-          <input #fileInput type="file" accept="image/*" class="intake__file-input" (change)="onPhotoSelected($event)" />
-          <app-button type="button" (click)="fileInput.click()">Upload a photo</app-button>
-          @if (uploadedPhoto() && !surrenderRiskText().trim()) {
-            <app-status-badge status="pending">Surrender Risk Assessment is required before triage can begin.</app-status-badge>
-          }
-        </div>
-      }
+      <div class="intake__upload">
+        <app-textarea-field
+          label="Surrender Risk Assessment"
+          [(value)]="surrenderRiskText"
+          placeholder="Describe the surrendering owner's situation…"
+        />
+        <input #fileInput type="file" accept="image/*" class="intake__file-input" (change)="onPhotoSelected($event)" />
+        <app-button type="button" (click)="fileInput.click()">Upload a photo</app-button>
+        @if (uploadedPhoto() && !surrenderRiskText().trim()) {
+          <app-status-badge status="pending">Surrender Risk Assessment is required before triage can begin.</app-status-badge>
+        }
+      </div>
 
       @if (triageResource.isLoading() || surrenderRiskResource.isLoading()) {
         <div class="intake__loading">
@@ -99,7 +93,7 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
         <app-status-badge status="critical">{{ riskErr.message }}</app-status-badge>
       }
 
-      @if (triageResource.hasValue() || rosterAnimal()) {
+      @if (triageResource.hasValue()) {
         <div class="intake__layout">
           <form class="intake-form">
             <div class="intake-form__fields">
@@ -120,16 +114,12 @@ export function toPartialCaseFile(animal: Animal | undefined): CaseFile | undefi
         </div>
       }
 
-      @if (triageResource.hasValue() || triageError() || rosterAnimal()) {
+      @if (triageResource.hasValue() || triageError()) {
         <div class="intake__actions">
-          @if (rosterAnimal()) {
-            <app-button type="button" variant="secondary" (click)="backToRoster()">← Back to Roster</app-button>
-          } @else {
-            @if (triageResource.hasValue()) {
-              <app-button type="button" (click)="admit()">Admit to shelter</app-button>
-            }
-            <app-button type="button" variant="secondary" (click)="clear()">Start over</app-button>
+          @if (triageResource.hasValue()) {
+            <app-button type="button" (click)="admit()">Admit to shelter</app-button>
           }
+          <app-button type="button" variant="secondary" (click)="clear()">Start over</app-button>
         </div>
       }
     </section>
@@ -282,15 +272,9 @@ export class IntakeTriage {
     return body ?? { code: 'UPSTREAM_ERROR', message: 'Something went wrong assessing that photo.' };
   });
 
-  protected readonly rosterAnimal = signal<Animal | undefined>(
-    'id' in (history.state ?? {}) ? (history.state as Animal) : undefined,
-  );
-
-  /** Resets to the newest resolved value whenever triageResource fires OR initializes from
-   * roster navigation state. The edits survive re-renders unless the underlying resource value itself changes. */
-  protected readonly caseFile = linkedSignal<CaseFile>(
-    () => this.triageResource.value() ?? toPartialCaseFile(this.rosterAnimal()) ?? EMPTY_CASE_FILE,
-  );
+  /** Resets to the newest resolved value whenever triageResource fires. The edits survive
+   * re-renders unless the underlying resource value itself changes. */
+  protected readonly caseFile = linkedSignal<CaseFile>(() => this.triageResource.value() ?? EMPTY_CASE_FILE);
 
   /** Template binds directly to each field's FieldState.value (e.g. [(value)]="intakeForm.species().value")
    * rather than importing Angular's own `Field`/`FormField` directives from '@angular/forms/signals' —
@@ -332,12 +316,13 @@ export class IntakeTriage {
     this.completedSteps.set(new Set());
   }
 
-  protected backToRoster(): void {
-    this.router.navigate(['/roster']);
-  }
-
-  /** Confirms, then commits the reviewed case file to the roster as an under-repair animal. */
-  protected admit(): void {
+  /** Confirms, then commits the reviewed case file to the roster as an under-repair animal.
+   * ConfirmDialog is dynamically imported rather than statically imported at the top of this
+   * file — it's only ever opened imperatively via `Dialog.open()`, never placed in a template,
+   * so `@defer` can't gate it. A dynamic import is the equivalent for imperative usage: its
+   * chunk is fetched on first click here instead of eagerly alongside this route's chunk. */
+  protected async admit(): Promise<void> {
+    const { ConfirmDialog } = await import('../../ui/confirm-dialog/confirm-dialog');
     const caseName = this.intakeForm.suggestedCaseName().value() || 'this case';
     const ref = this.dialog.open<boolean>(ConfirmDialog, {
       data: {

@@ -15,6 +15,14 @@ export const routes: Routes = [
     loadComponent: () => import('./features/concierge/concierge').then((m) => m.Concierge),
   },
   {
+    path: 'adopt',
+    loadComponent: () => import('./features/adoption/adoption').then((m) => m.AdoptionFlow),
+  },
+  {
+    path: 'faq',
+    loadComponent: () => import('./features/faq/faq').then((m) => m.Faq),
+  },
+  {
     path: '',
     loadComponent: () => import('./features/intake-triage/intake-triage').then((m) => m.IntakeTriage),
   },

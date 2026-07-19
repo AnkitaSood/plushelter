@@ -18,7 +18,6 @@ Persistent context for any agent session working in this repo. Keep this short �
 | Layer | Choice |
 |---|---|
 | Framework | Angular 22 (confirm with `ng version` — package.json pins `^22.0.5`), standalone components, zoneless, OnPush default |
-| Accessibility | `@angular/cdk` + `@angular/aria` — neither is installed yet; see `tasks.md` Phase 0 |
 | Styling | Plain CSS custom properties against the palette/type system in `specs.md` §6 — no Tailwind |
 | Hosting/backend | Netlify: `netlify/functions/*.mts` (Node) + `netlify/edge-functions/*.mts` (Deno) |
 | AI | `gemini-3.5-flash` via plain `fetch()` against the Interactions API REST endpoint — no `@google/genai` SDK dependency |
@@ -27,7 +26,7 @@ Persistent context for any agent session working in this repo. Keep this short �
 ## Repo map
 
 ```
-.claude/           Claude Code config (MCP servers, skills) — already configured
+.Codex/           Codex config (MCP servers, skills) — already configured
 .gemini/           Gemini CLI/skills config — already configured
 public/            static assets
 src/               Angular app
@@ -47,14 +46,6 @@ ng test               # unit tests — confirm runner first (see Testing row abo
 ng build              # production build, confirms nothing's broken before a deploy
 ```
 
-## Definition of done, per feature
-
-Not done until all of these are true, not just "it compiles":
-
-1. `get_best_practices` was consulted for any Angular code touched.
-2. The backend endpoint was tested in isolation (`curl`/Postman against `netlify dev`) before the Angular side was wired to it.
-3. Chrome DevTools MCP was used to actually load the feature in a real browser, click through it, and check `list_console_messages` for errors — not just "the build succeeded."
-4. The repo owner has personally used the feature end to end and understands every file involved well enough to explain it live.
 ## Where the rest of the context lives
 
 - `specs.md` — the full functional/non-functional spec, design system, data model, and API contracts.
@@ -85,7 +76,6 @@ You are an expert in TypeScript, Angular, and scalable web application developme
 - Keep components small and focused on a single responsibility
 - Use `input()` and `output()` functions instead of decorators
 - Use `computed()` for derived state
-- Set `changeDetection: ChangeDetectionStrategy.OnPush` in `@Component` decorator
 - Prefer inline templates for small components
 - Prefer Reactive forms instead of Template-driven ones — **on this project specifically, "reactive" means Signal Forms (`form()` + `FormField()` + `linkedSignal()`), not the older `ReactiveFormsModule`/`FormGroup`/`FormControl` API. The only form in this app (Intake Triage's case-file form, FR-1) is a Signal Form — don't import `ReactiveFormsModule` out of habit.**
 - Do NOT use `ngClass`, use `class` bindings instead

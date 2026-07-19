@@ -1,0 +1,18 @@
+[mcp_servers.angular-cli]
+command = "npx"
+args = [
+    "-y",
+    "@angular/cli",
+    "mcp",
+    "--experimental-tool",
+    "modernize",
+    "--experimental-tool",
+    "onpush-zoneless-migration",
+]
+
+[mcp_servers.chrome-devtools]
+command = "npx"
+args = [
+    "-y",
+    "chrome-devtools-mcp@latest",
+]

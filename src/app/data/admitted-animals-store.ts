@@ -16,4 +16,16 @@ export class AdmittedAnimalsStore {
   admit(animal: Animal): void {
     this._admitted.update((list) => [...list, animal]);
   }
+
+  has(animalId: Animal['id']): boolean {
+    return this._admitted().some((animal) => animal.id === animalId);
+  }
+
+  remove(animalId: Animal['id']): void {
+    this._admitted.update((list) => list.filter((animal) => animal.id !== animalId));
+  }
+
+  clear(): void {
+    this._admitted.set([]);
+  }
 }

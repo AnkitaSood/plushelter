@@ -7,7 +7,7 @@ import { ChatBubble } from '../../ui/chat-bubble/chat-bubble';
 import { CritterLoader } from '../../ui/critter-loader/critter-loader';
 import { FormField } from '../../ui/form-field/form-field';
 import { StatusBadge } from '../../ui/status-badge/status-badge';
-import { AnimalMatchFilter } from './animal-match-filter';
+import { matchedAnimals } from './animal-match-filter';
 import { Animal, ChatSseEvent, ConciergeChatService } from './concierge-chat.service';
 
 interface ChatTurn {
@@ -23,7 +23,6 @@ interface ChatStreamState {
 
 interface PendingChatRequest {
   message: string;
-  previousInteractionId?: string;
   requestId: number;
 }
 
@@ -109,7 +108,6 @@ let nextRequestId = 0;
 })
 export class Concierge {
   private readonly chatService = inject(ConciergeChatService);
-  private readonly animalMatch = inject(AnimalMatchFilter);
   private lastFinalizedRequestId = -1;
 
   protected draft = signal('');
@@ -125,7 +123,7 @@ export class Concierge {
   protected readonly chatStream = rxResource({
     params: () => this.pendingRequest(),
     stream: ({ params }) =>
-      this.chatService.streamChat(params.message, params.previousInteractionId).pipe(
+      this.chatService.streamChat(params.message).pipe(
         tap((event) => {
           if (event.type === 'tool_result') {
             this.candidateAnimals.set(event.animals);
@@ -152,7 +150,7 @@ export class Concierge {
   protected readonly streamingText = computed(() => this.chatStream.value()?.text ?? '');
   protected readonly isStreaming = computed(() => this.pendingRequest() !== undefined);
   protected readonly canSend = computed(() => this.draft().trim().length > 0);
-  protected readonly matchedAnimals = this.animalMatch.matchedAnimals(this.candidateAnimals, this.lastReplyText);
+  protected readonly matchedAnimals = matchedAnimals(this.candidateAnimals, this.lastReplyText);
 
   constructor() {
     // Moves a finished stream's result into permanent history exactly once, whether it

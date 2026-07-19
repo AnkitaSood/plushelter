@@ -26,28 +26,58 @@ export interface ChatErrorEvent {
 
 export type ChatSseEvent = ChatTokenEvent | ChatToolResultEvent | ChatDoneEvent | ChatErrorEvent;
 
+function createProtocolError(message: string): ChatErrorEvent {
+  return { type: 'error', code: 'INVALID_SSE_EVENT', message };
+}
+
 /** Parses one `event:`/`data:` record from the backend's SSE contract (specs.md §5) into our event union. */
-function parseSseRecord(raw: string): ChatSseEvent | null {
+function parseSseRecord(raw: string): ChatSseEvent {
   let eventType = 'message';
   let dataLine = '';
   for (const line of raw.split('\n')) {
     if (line.startsWith('event:')) eventType = line.slice(6).trim();
     else if (line.startsWith('data:')) dataLine += line.slice(5).trim();
   }
-  if (!dataLine) return null;
 
-  const data = JSON.parse(dataLine);
+  if (eventType === 'done') {
+    return { type: 'done' };
+  }
+
+  if (!dataLine) {
+    return createProtocolError(`Received "${eventType}" SSE event without a data payload.`);
+  }
+
+  let data: unknown;
+  try {
+    data = JSON.parse(dataLine);
+  } catch {
+    return createProtocolError(`Received malformed JSON for "${eventType}" SSE event.`);
+  }
+
+  if (!data || typeof data !== 'object') {
+    return createProtocolError(`Received non-object payload for "${eventType}" SSE event.`);
+  }
+
+  const payload = data as Record<string, unknown>;
+
   switch (eventType) {
     case 'token':
-      return { type: 'token', token: data.token };
+      if (typeof payload['token'] !== 'string') {
+        return createProtocolError('Token SSE event is missing a string "token" field.');
+      }
+      return { type: 'token', token: payload['token'] };
     case 'tool_result':
-      return { type: 'tool_result', toolName: data.toolName, animals: data.animals };
-    case 'done':
-      return { type: 'done' };
+      if (typeof payload['toolName'] !== 'string' || !Array.isArray(payload['animals'])) {
+        return createProtocolError('Tool result SSE event is missing required fields.');
+      }
+      return { type: 'tool_result', toolName: payload['toolName'], animals: payload['animals'] as Animal[] };
     case 'error':
-      return { type: 'error', code: data.code, message: data.message };
+      if (typeof payload['code'] !== 'string' || typeof payload['message'] !== 'string') {
+        return createProtocolError('Error SSE event is missing required string fields.');
+      }
+      return { type: 'error', code: payload['code'], message: payload['message'] };
     default:
-      return null;
+      return createProtocolError(`Received unsupported SSE event type "${eventType}".`);
   }
 }
 
@@ -58,7 +88,7 @@ export class ConciergeChatService {
    * cancellation-driven abort — resolves through `complete()`, never `error()`, so callers
    * have exactly one place (the `error` event) to handle anything going wrong.
    */
-  streamChat(message: string, previousInteractionId: string | undefined): Observable<ChatSseEvent> {
+  streamChat(message: string): Observable<ChatSseEvent> {
     return new Observable<ChatSseEvent>((subscriber) => {
       const controller = new AbortController();
 
@@ -67,7 +97,7 @@ export class ConciergeChatService {
           const response = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message, previousInteractionId }),
+            body: JSON.stringify({ message }),
             signal: controller.signal,
           });
 
@@ -85,6 +115,13 @@ export class ConciergeChatService {
           const decoder = new TextDecoder();
           let buffer = '';
 
+          /** Emits a parsed record; returns true if the stream should stop (an error event ends it). */
+          const emitRecord = (raw: string): boolean => {
+            const parsed = parseSseRecord(raw);
+            subscriber.next(parsed);
+            return parsed.type === 'error';
+          };
+
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
@@ -94,9 +131,16 @@ export class ConciergeChatService {
             while ((separatorIndex = buffer.indexOf('\n\n')) !== -1) {
               const rawEvent = buffer.slice(0, separatorIndex);
               buffer = buffer.slice(separatorIndex + 2);
-              const parsed = parseSseRecord(rawEvent);
-              if (parsed) subscriber.next(parsed);
+              if (emitRecord(rawEvent)) {
+                subscriber.complete();
+                return;
+              }
             }
+          }
+
+          if (buffer.trim() && emitRecord(buffer)) {
+            subscriber.complete();
+            return;
           }
 
           subscriber.complete();

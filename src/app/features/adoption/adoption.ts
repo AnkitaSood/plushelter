@@ -1,8 +1,9 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { httpResource } from '@angular/common/http';
 import { form } from '@angular/forms/signals';
 import { Router } from '@angular/router';
 import { Dialog } from '@angular/cdk/dialog';
+import { NotificationService } from '../../ui/notifications/notification.service';
 import { Button } from '../../ui/button/button';
 import { CaseFileCard } from '../../ui/case-file-card/case-file-card';
 import { FormField } from '../../ui/form-field/form-field';
@@ -72,7 +73,7 @@ import {
             </div>
           </div>
         } @else {
-          <div class="adoption__certificate">
+          <div #certificate class="adoption__certificate">
             <div class="adoption__certificate-frame">
               <div class="adoption__certificate-paper">
                 <div class="adoption__certificate-heading">
@@ -220,6 +221,8 @@ export class AdoptionFlow {
   private readonly router = inject(Router);
   private readonly dialog = inject(Dialog);
   private readonly adoptedStore = inject(AdoptedAnimalsStore);
+  private readonly notifications = inject(NotificationService);
+  private readonly certificate = viewChild<ElementRef<HTMLElement>>('certificate');
 
   /** Arrives the same way Intake Triage's roster branch used to read it — via nav `state` —
    * but is required here: this route only makes sense arriving from a roster click. */
@@ -253,6 +256,27 @@ export class AdoptionFlow {
 
   constructor() {
     if (!this.animal()) this.router.navigate(['/roster']);
+
+    // The rare Adoption-Pink celebration toast — fired the moment the certificate resolves.
+    effect(() => {
+      if (this.certificateResource.status() === 'resolved') {
+        this.notifications.celebrate(
+          `${this.animal()?.name ?? 'This companion'} has been placed. Certificate on file.`,
+          {
+            onView: () => this.certificate()?.nativeElement.scrollIntoView({ behavior: 'smooth' }),
+          },
+        );
+      }
+    });
+
+    // Placement failures become retryable alert toasts.
+    effect(() => {
+      if (this.certificateResource.error()) {
+        this.notifications.alert(this.certificateError()?.message ?? 'Placement failed.', {
+          onRetry: () => this.certificateResource.reload(),
+        });
+      }
+    });
   }
 
   /** Confirms, then commits the adoption and kicks off the certificate resource. ConfirmDialog

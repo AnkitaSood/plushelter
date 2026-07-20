@@ -41,6 +41,12 @@ export const DEMO_RESPONSES = {
     guiltScore: 65,
     message: 'Surrendering a cherished companion requires courage. Your concern demonstrates responsibility.',
   },
+  rosterSearch: {
+    matches: [
+      { id: '001', reason: 'Cleared for placement as a low-maintenance companion following an extended rehabilitation stay.' },
+      { id: '003', reason: 'A self-sufficient resident whose independent temperament suits a low-contact household.' },
+    ],
+  },
   adoptionCertificate: {
     certificateText:
       "By the authority vested in S.A.R.F.'s placement registrar, this certifies that Horace has been placed " +

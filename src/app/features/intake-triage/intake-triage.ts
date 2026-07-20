@@ -1,22 +1,23 @@
-import { Component, computed, inject, linkedSignal, signal } from '@angular/core';
+import { Component, computed, effect, inject, linkedSignal, signal } from '@angular/core';
 import { httpResource } from '@angular/common/http';
 import { form } from '@angular/forms/signals';
 import { Router } from '@angular/router';
 import { Dialog } from '@angular/cdk/dialog';
+import { Tabs, TabList, Tab, TabPanel, TabContent } from '@angular/aria/tabs';
+import { NotificationService } from '../../ui/notifications/notification.service';
 import { Button } from '../../ui/button/button';
 import { ChecklistItem } from '../../ui/checklist-item/checklist-item';
 import { FormField } from '../../ui/form-field/form-field';
 import { StatusBadge } from '../../ui/status-badge/status-badge';
 import { TextareaField } from '../../ui/textarea-field/textarea-field';
 import { CritterLoader } from '../../ui/critter-loader/critter-loader';
+import { SurrenderFlow } from './surrender-flow';
 import type { Animal } from '../../data/roster';
 import { UNDER_REPAIR_PLACEHOLDER } from '../../data/roster';
 import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
 import {
   EMPTY_CASE_FILE,
   type CaseFile,
-  type GuiltAnalysis,
-  type SurrenderRiskErrorBody,
   type TriageErrorBody,
   type UploadedPhoto,
 } from './intake-triage.model';
@@ -51,77 +52,88 @@ export function caseFileToUnderRepairAnimal(fields: {
 }
 
 @Component({
-  imports: [Button, ChecklistItem, FormField, StatusBadge, TextareaField, CritterLoader],
+  imports: [
+    Button,
+    ChecklistItem,
+    FormField,
+    StatusBadge,
+    TextareaField,
+    CritterLoader,
+    Tabs,
+    TabList,
+    Tab,
+    TabPanel,
+    TabContent,
+    SurrenderFlow,
+  ],
   template: `
     <section class="intake">
-      <h1>Intake Vision Triage</h1>
+      <h1>Intake / Surrender</h1>
       <p class="intake__intro">
-        Describe the surrender situation and upload a photo of the stuffed animal. Once both are in,
-        S.A.R.F.'s intake counselor reviews the photo and the situation together to produce a case file.
+        Bring a stuffed animal into S.A.R.F. either way: upload a photo or file a surrender if you don't have a photo yet.
       </p>
 
-      <div class="intake__upload">
-        <app-textarea-field
-          label="Surrender Risk Assessment"
-          [(value)]="surrenderRiskText"
-          placeholder="Describe the surrendering owner's situation…"
-        />
-        <input #fileInput type="file" accept="image/*" class="intake__file-input" (change)="onPhotoSelected($event)" />
-        <app-button type="button" (click)="fileInput.click()">Upload a photo</app-button>
-        @if (uploadedPhoto() && !surrenderRiskText().trim()) {
-          <app-status-badge status="pending">Surrender Risk Assessment is required before triage can begin.</app-status-badge>
-        }
-      </div>
+      <div ngTabs class="intake__tabs">
+        <ul ngTabList [(selectedTab)]="mode" class="intake__tablist" aria-label="Intake method">
+          <li ngTab value="photo" class="intake__tab">Intake</li>
+          <li ngTab value="surrender" class="intake__tab">Surrender</li>
+        </ul>
 
-      @if (triageResource.isLoading() || surrenderRiskResource.isLoading()) {
-        <div class="intake__loading">
-          <app-critter-loader />
-          @if (triageResource.isLoading()) {
-            <p class="intake__loading-text">Triaging image</p>
-          }
-          @if (surrenderRiskResource.isLoading()) {
-            <p class="intake__loading-text">Analyzing surrender reason</p>
-          }
-        </div>
-      }
-
-      @if (triageError(); as triageErr) {
-        <app-status-badge status="critical">{{ triageErr.message }}</app-status-badge>
-      }
-
-      @if (surrenderRiskError(); as riskErr) {
-        <app-status-badge status="critical">{{ riskErr.message }}</app-status-badge>
-      }
-
-      @if (triageResource.hasValue()) {
-        <div class="intake__layout">
-          <form class="intake-form">
-            <div class="intake-form__fields">
-              <app-form-field label="Species" [(value)]="intakeForm.species().value" />
-              <app-textarea-field label="Condition" [(value)]="intakeForm.condition().value" />
-              <app-form-field label="Case name" [(value)]="intakeForm.suggestedCaseName().value" />
-              <app-form-field label="Huggability score" type="number" [value]="scoreFieldText()" (valueChange)="onScoreInput($event)" />
-              <app-textarea-field label="Surrender risk assessment" [value]="surrenderRiskDisplay()" [readonly]="true" />
+        <div ngTabPanel value="photo" class="intake__panel">
+          <ng-template ngTabContent>
+            <div class="intake__upload">
+              <input #fileInput type="file" accept="image/*" class="intake__file-input" (change)="onPhotoSelected($event)" />
+              <app-button type="button" (click)="fileInput.click()">Upload a photo</app-button>
             </div>
-          </form>
 
-          <div class="intake__treatment">
-            <h2>Recommended treatment plan</h2>
-            @for (step of caseFile().recommendedTreatmentPlan; track step) {
-              <app-checklist-item [label]="step" [checked]="isStepDone(step)" (checkedChange)="setStepDone(step, $event)" />
+            @if (triageResource.isLoading()) {
+              <div class="intake__loading">
+                <app-critter-loader />
+                <p class="intake__loading-text">Triaging image</p>
+              </div>
             }
-          </div>
-        </div>
-      }
 
-      @if (triageResource.hasValue() || triageError()) {
-        <div class="intake__actions">
-          @if (triageResource.hasValue()) {
-            <app-button type="button" (click)="admit()">Admit to shelter</app-button>
-          }
-          <app-button type="button" variant="secondary" (click)="clear()">Start over</app-button>
+            @if (triageError(); as triageErr) {
+              <app-status-badge status="critical">{{ triageErr.message }}</app-status-badge>
+            }
+
+            @if (triageResource.hasValue()) {
+              <div class="intake__layout">
+                <form class="intake-form">
+                  <div class="intake-form__fields">
+                    <app-form-field label="Species" [(value)]="intakeForm.species().value" />
+                    <app-textarea-field label="Condition" [(value)]="intakeForm.condition().value" />
+                    <app-form-field label="Case name" [(value)]="intakeForm.suggestedCaseName().value" />
+                    <app-form-field label="Huggability score" type="number" [value]="scoreFieldText()" (valueChange)="onScoreInput($event)" />
+                  </div>
+                </form>
+
+                <div class="intake__treatment">
+                  <h2>Recommended treatment plan</h2>
+                  @for (step of caseFile().recommendedTreatmentPlan; track step) {
+                    <app-checklist-item [label]="step" [checked]="isStepDone(step)" (checkedChange)="setStepDone(step, $event)" />
+                  }
+                </div>
+              </div>
+            }
+
+            @if (triageResource.hasValue() || triageError()) {
+              <div class="intake__actions">
+                @if (triageResource.hasValue()) {
+                  <app-button type="button" (click)="admit()">Admit to shelter</app-button>
+                }
+                <app-button type="button" variant="secondary" (click)="clear()">Start over</app-button>
+              </div>
+            }
+          </ng-template>
         </div>
-      }
+
+        <div ngTabPanel value="surrender" class="intake__panel">
+          <ng-template ngTabContent>
+            <app-surrender-flow />
+          </ng-template>
+        </div>
+      </div>
     </section>
   `,
   styles: `
@@ -138,6 +150,44 @@ export function caseFileToUnderRepairAnimal(fields: {
 
     .intake__intro {
       margin: 0;
+    }
+
+    .intake__tabs {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+    }
+
+    .intake__tablist {
+      display: flex;
+      gap: var(--space-1);
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      border-bottom: var(--border-width) solid var(--border-color);
+    }
+
+    .intake__tab {
+      padding: var(--space-2) var(--space-4);
+      margin-bottom: calc(-1 * var(--border-width));
+      font-family: var(--font-body);
+      font-size: var(--text-base);
+      color: var(--color-ink);
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .intake__tab[aria-selected='true'] {
+      border-bottom-color: var(--color-primary);
+      font-weight: 600;
+    }
+
+    .intake__tab:focus-visible {
+      outline: var(--focus-ring-width) solid var(--focus-ring-color);
+      outline-offset: 2px;
     }
 
     .intake__upload {
@@ -187,7 +237,6 @@ export function caseFileToUnderRepairAnimal(fields: {
     .intake-form__fields > *:nth-child(2) { animation-delay: 60ms; }
     .intake-form__fields > *:nth-child(3) { animation-delay: 120ms; }
     .intake-form__fields > *:nth-child(4) { animation-delay: 180ms; }
-    .intake-form__fields > *:nth-child(5) { animation-delay: 240ms; }
 
     @keyframes intake-field-reveal {
       from { opacity: 0; transform: translateY(4px); }
@@ -218,51 +267,36 @@ export class IntakeTriage {
   private readonly router = inject(Router);
   private readonly admittedStore = inject(AdmittedAnimalsStore);
   private readonly dialog = inject(Dialog);
+  private readonly notifications = inject(NotificationService);
+
+  /** Selected intake method, two-way bound to the aria TabList. Seeds the photo tab as the default. */
+  protected readonly mode = signal<string | undefined>('photo');
+
+  constructor() {
+    // Surface backend failures as retryable alert toasts (in addition to the inline badge).
+    effect(() => {
+      if (this.triageResource.error()) {
+        this.notifications.alert(this.triageError()?.message ?? 'Triage failed.', {
+          onRetry: () => this.triageResource.reload(),
+        });
+      }
+    });
+  }
 
   protected readonly uploadedPhoto = signal<UploadedPhoto | undefined>(undefined);
-  protected readonly surrenderRiskText = signal('');
   protected readonly completedSteps = signal<ReadonlySet<string>>(new Set());
 
-  /** Triage (both the vision assessment and the surrender-risk read) only starts once
-   * the photo AND the surrender-risk description are both present — neither resource
-   * fires on its own. */
-  private readonly triageInputs = computed(() => {
-    const photo = this.uploadedPhoto();
-    const situation = this.surrenderRiskText().trim();
-    return photo && situation ? { photo, situation } : undefined;
-  });
-
+  /** Photo-only now: triage fires the moment a photo is present and re-fires on a newer upload.
+   * Returning `undefined` while there's no photo keeps the request from firing and, per httpResource,
+   * cancels a superseded in-flight request when the photo signal changes again (AC-1.2). */
   protected readonly triageResource = httpResource<CaseFile>(() => {
-    const inputs = this.triageInputs();
-    if (!inputs) return undefined;
+    const photo = this.uploadedPhoto();
+    if (!photo) return undefined;
     return {
       url: '/api/intake-triage',
       method: 'POST',
-      body: { photoBase64: inputs.photo.base64, mimeType: inputs.photo.mimeType },
+      body: { photoBase64: photo.base64, mimeType: photo.mimeType },
     };
-  });
-
-  protected readonly surrenderRiskResource = httpResource<GuiltAnalysis>(() => {
-    const inputs = this.triageInputs();
-    if (!inputs) return undefined;
-    return {
-      url: '/api/surrender-analysis',
-      method: 'POST',
-      body: { submittedText: inputs.situation },
-    };
-  });
-
-  protected readonly surrenderRiskError = computed(() => {
-    const error = this.surrenderRiskResource.error();
-    if (!error) return undefined;
-    const body = (error as { error?: SurrenderRiskErrorBody })?.error?.error;
-    return body ?? { code: 'UPSTREAM_ERROR', message: 'Something went wrong assessing surrender risk.' };
-  });
-
-  protected readonly surrenderRiskDisplay = computed(() => {
-    if (this.surrenderRiskResource.isLoading()) return 'Assessing…';
-    const value = this.surrenderRiskResource.value();
-    return value ? `${value.guiltScore}/100 — ${value.message}` : '';
   });
 
   protected readonly triageError = computed(() => {
@@ -312,7 +346,6 @@ export class IntakeTriage {
 
   protected clear(): void {
     this.uploadedPhoto.set(undefined);
-    this.surrenderRiskText.set('');
     this.completedSteps.set(new Set());
   }
 
@@ -346,6 +379,9 @@ export class IntakeTriage {
           condition: this.intakeForm.condition().value(),
         }),
       );
+      // Fired before navigating away — the toast is created on document.body, so it outlives
+      // this route component being destroyed and is still visible on the roster page.
+      this.notifications.info(`${caseName} admitted to the roster as under repair.`);
       this.router.navigate(['/roster']);
     });
   }

@@ -7,9 +7,7 @@ export interface AdoptionRecord {
 }
 
 /**
- * Session-scoped store of finalized adoptions. A root singleton, mirroring
- * `AdmittedAnimalsStore`'s lifetime: survives navigation, resets on a hard browser refresh.
- * No persistence, no binary data.
+ * Session-scoped store of finalized adoptions. A root singleton, mirroring `AdmittedAnimalsStore`'s lifetime
  */
 @Service()
 export class AdoptedAnimalsStore {

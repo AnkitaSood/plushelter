@@ -1,20 +1,41 @@
-import { Component, computed, signal } from '@angular/core';
+import { Component, computed, debounced, effect, inject, resource, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { inject } from '@angular/core';
 import { CaseFileCard } from '../../ui/case-file-card/case-file-card';
+import { FormField } from '../../ui/form-field/form-field';
 import { StatusBadge, type StatusBadgeStatus } from '../../ui/status-badge/status-badge';
 import { Animal, MOCK_ANIMALS } from '../../data/roster';
 import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
 import { AdoptedAnimalsStore } from '../../data/adopted-animals-store';
+import { NotificationService } from '../../ui/notifications/notification.service';
+import type { RosterSearchResult } from './roster-search.model';
 
 @Component({
-  imports: [CaseFileCard, StatusBadge],
+  imports: [CaseFileCard, FormField, StatusBadge],
   template: `
     <section class="roster">
       <h1>Active Case Roster</h1>
       <p class="roster__intro">
         Animals currently on file. Select a cleared case to begin adoption.
       </p>
+
+      <div class="roster__search">
+        <app-form-field
+          label="Search the roster"
+          hint="Describe the companion you're after — our concierge reads the whole roster."
+          [(value)]="searchQuery"
+        />
+        <div class="roster__search-status" aria-live="polite">
+          @if (isDebouncing()) {
+            <app-status-badge status="info">Debouncing…</app-status-badge>
+          } @else if (searchResults.isLoading()) {
+            <app-status-badge status="info">Searching the roster…</app-status-badge>
+          } @else if (searchError(); as err) {
+            <app-status-badge status="critical">{{ err.message }}</app-status-badge>
+          } @else if (isSearchActive()) {
+            <app-status-badge status="available">{{ displayedAnimals().length }} match(es)</app-status-badge>
+          }
+        </div>
+      </div>
 
       <div class="roster__filters">
         <label class="roster__filter-label">
@@ -44,24 +65,33 @@ import { AdoptedAnimalsStore } from '../../data/adopted-animals-store';
         </label>
       </div>
 
-      @if (filteredAnimals().length === 0) {
-        <p class="roster__empty">No cases match the current filters.</p>
+      @if (displayedAnimals().length === 0) {
+        <p class="roster__empty">
+          @if (isSearchActive()) {
+            No cleared cases match that search.
+          } @else {
+            No cases match the current filters.
+          }
+        </p>
       }
 
       <div class="roster__grid">
-        @for (animal of filteredAnimals(); track animal.id) {
+        @for (item of displayedAnimals(); track item.animal.id) {
           @defer (on viewport) {
             <app-case-file-card
-              [title]="animal.name"
-              [subtitle]="animal.species + ' · ' + animal.condition"
-              [description]="animal.backstory"
-              [imageUrl]="animal.photoUrl"
-              [clickable]="animal.available && !adoptedStore.isAdopted(animal.id)"
-              (activated)="beginAdoption(animal)"
+              [title]="item.animal.name"
+              [subtitle]="item.animal.species + ' · ' + item.animal.condition"
+              [description]="item.animal.backstory"
+              [imageUrl]="item.animal.photoUrl"
+              [clickable]="item.animal.available && !adoptedStore.isAdopted(item.animal.id)"
+              (activated)="beginAdoption(item.animal)"
             >
-              <app-status-badge [status]="badgeStatus(animal)">
-                {{ statusLabel(animal) }}
+              <app-status-badge [status]="badgeStatus(item.animal)">
+                {{ statusLabel(item.animal) }}
               </app-status-badge>
+              @if (item.reason) {
+                <p class="roster__match-reason">{{ item.reason }}</p>
+              }
             </app-case-file-card>
           } @placeholder {
             <div class="roster__card-placeholder"></div>
@@ -84,6 +114,27 @@ import { AdoptedAnimalsStore } from '../../data/adopted-animals-store';
 
     .roster__intro {
       margin: 0;
+    }
+
+    .roster__search {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+
+    .roster__search-status {
+      display: flex;
+      gap: var(--space-2);
+      min-height: 1.75rem;
+      align-items: center;
+    }
+
+    .roster__match-reason {
+      margin: var(--space-2) 0 0;
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      line-height: 1.4;
+      opacity: 0.8;
     }
 
     .roster__filters {
@@ -149,23 +200,100 @@ export class Roster {
   private readonly router = inject(Router);
   private readonly admittedStore = inject(AdmittedAnimalsStore);
   protected readonly adoptedStore = inject(AdoptedAnimalsStore);
+  private readonly notifications = inject(NotificationService);
+
+  constructor() {
+    // Search failures surface as a retryable alert toast, alongside the inline badge.
+    effect(() => {
+      if (this.searchResults.error()) {
+        this.notifications.alert(this.searchError()?.message ?? 'Roster search failed.', {
+          onRetry: () => this.searchResults.reload(),
+        });
+      }
+    });
+  }
 
   protected readonly speciesFilter = signal<string>('');
   protected readonly statusFilter = signal<'all' | 'available'>('all');
+
+  /** Free-text search box. Every keystroke lands here immediately… */
+  protected readonly searchQuery = signal('');
+
+  /** …but `debounced()` gives us a *Resource* whose value only catches up to `searchQuery`
+   * after 400ms of quiet. We drive the network search off the debounced value, not the raw
+   * one, so we don't fire a Gemini call on every keystroke. */
+  protected readonly debouncedQuery = debounced(this.searchQuery, 400);
+
+  /** The debounce window made visible: true while the raw box is ahead of the settled value. */
+  protected readonly isDebouncing = computed(() => {
+    const raw = this.searchQuery().trim();
+    return raw.length > 0 && raw !== (this.debouncedQuery.value() ?? '').trim();
+  });
+
+  /** Plain `resource()` — the one signals primitive the rest of the app doesn't use. Idle while
+   * the debounced query is empty; otherwise loads AI matches, cancelling a superseded request
+   * via `abortSignal` when the debounced value changes again mid-flight. */
+  protected readonly searchResults = resource({
+    params: () => {
+      const q = (this.debouncedQuery.value() ?? '').trim();
+      return q.length > 0 ? q : undefined;
+    },
+    loader: async ({ params, abortSignal }) => {
+      const res = await fetch('/api/roster-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: params }),
+        signal: abortSignal,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => undefined);
+        throw new Error(body?.error?.message ?? `Search failed (${res.status})`);
+      }
+      return (await res.json()) as RosterSearchResult;
+    },
+  });
+
+  protected readonly searchError = computed(() => {
+    const err = this.searchResults.error();
+    if (!err) return undefined;
+    return { message: err instanceof Error ? err.message : 'Something went wrong searching the roster.' };
+  });
+
+  /** A search is "active" once the debounced query is non-empty — even while loading — so the
+   * grid switches from browse-mode into search-mode results. */
+  protected readonly isSearchActive = computed(() => (this.debouncedQuery.value() ?? '').trim().length > 0);
 
   protected readonly speciesOptions = computed(() =>
     [...new Set([...MOCK_ANIMALS, ...this.admittedStore.admitted()].map((a) => a.species))].sort(),
   );
 
+  /** Browse-mode list: the mock roster + this session's admitted cases, narrowed by the dropdowns. */
   protected readonly filteredAnimals = computed(() =>
     [...MOCK_ANIMALS, ...this.admittedStore.admitted()]
       .filter((a) => !this.speciesFilter() || a.species === this.speciesFilter())
       .filter((a) => this.statusFilter() === 'all' || a.available),
   );
 
+  /** What the grid actually renders. In browse-mode it's `filteredAnimals` with no reason.
+   * In search-mode the AI matches (ordered by relevance) are intersected with the dropdown
+   * filters — search layers on top of the filters rather than replacing them — and each row
+   * carries the concierge's one-line reason. */
+  protected readonly displayedAnimals = computed<{ animal: Animal; reason?: string }[]>(() => {
+    const base = this.filteredAnimals();
+    if (!this.isSearchActive() || !this.searchResults.hasValue()) {
+      return base.map((animal) => ({ animal }));
+    }
+    const byId = new Map(base.map((a) => [a.id, a]));
+    return this.searchResults
+      .value()
+      .matches.filter((m) => byId.has(m.id))
+      .map((m) => ({ animal: byId.get(m.id)!, reason: m.reason }));
+  });
+
   protected statusLabel(animal: Animal): string {
     const adopterName = this.adoptedStore.getAdopterName(animal.id);
     if (adopterName) return `Adopted by ${adopterName}`;
+    if (animal.photosPending) return 'Photos pending';
     if (animal.underRepair) return 'Under repair — check back soon';
     return animal.available ? 'Cleared for placement' : 'Pending clearance';
   }

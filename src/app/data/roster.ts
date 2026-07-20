@@ -8,10 +8,14 @@ export interface Animal {
   available: boolean;
   /** True for a freshly-admitted intake case that is not yet cleared for adoption. */
   underRepair?: boolean;
+  /** True for an animal surrendered via the manual form — details are known but no photo yet. */
+  photosPending?: boolean;
 }
 
 /** Shared placeholder shown for every under-repair (freshly admitted) animal. */
 export const UNDER_REPAIR_PLACEHOLDER = '/images/under-repair.svg';
+
+export const PHOTOS_PENDING_PLACEHOLDER = UNDER_REPAIR_PLACEHOLDER;
 
 export const MOCK_ANIMALS: Animal[] = [
   {

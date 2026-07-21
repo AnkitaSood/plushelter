@@ -7,7 +7,7 @@ import { admitAnimalTool } from './shelter-tools';
  * when that context is destroyed. Instantiated from intake triage's route providers (see
  * app.routes.ts), so `admitAnimal` is only available while that route is active.
  *
- * `declareExperimentalWebMcpTool` is a no-op on the server and when no `navigator.modelContext`
+ * `declareExperimentalWebMcpTool` is a no-op on the server and when no `document.modelContext`
  * is present, so this is safe under SSR and without a WebMCP polyfill installed.
  */
 @Service()

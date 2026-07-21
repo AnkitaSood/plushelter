@@ -6,7 +6,7 @@ import { AdoptedAnimalsStore } from '../data/adopted-animals-store';
 /**
  * WebMCP tool definitions for the shelter, defined ONCE and shared two ways:
  *  - passed to `provideExperimentalWebMcpTools()` / `declareExperimentalWebMcpTool()` so a real
- *    browser AI agent (via `navigator.modelContext`, e.g. behind a polyfill) can call them, and
+ *    browser AI agent (via `document.modelContext`, e.g. behind a polyfill) can call them, and
  *  - listed + invoked directly by the in-app Agent Console (`runInInjectionContext`) so the
  *    capability is visible and demoable on stage without depending on any agent runtime.
  *

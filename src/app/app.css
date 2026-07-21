@@ -32,6 +32,9 @@
 }
 
 .app-nav {
+  position: relative;
+  z-index: 1001;
+  anchor-name: --app-nav; /* named anchor for the WebMCP agent dock, see agent-panel.ts */
   display: flex;
   align-items: center;
   justify-content: space-between;

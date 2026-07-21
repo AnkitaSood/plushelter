@@ -36,6 +36,21 @@ export const DEMO_RESPONSES = {
     ],
     animals: [MOCK_ANIMALS[0]],
   },
+  // Canned two-phase loop for the in-browser WebMCP agent (/api/agent). First the model "decides" to
+  // call a page tool; the browser runs it and calls back; then the model narrates the result.
+  webmcpAgent: {
+    interactionId: 'demo-interaction-1',
+    planTokens: ['Let me check the roster for you. '],
+    toolCall: {
+      id: 'demo-call-1',
+      name: 'searchRoster',
+      arguments: { criteria: 'low-maintenance' },
+    },
+    narrationTokens: [
+      'I searched the shelter roster and found a solid low-maintenance match. ',
+      'Horace, a rehabilitated bear, is calm, even-tempered, and cleared for placement.',
+    ],
+  },
   animals: MOCK_ANIMALS,
   surrenderAnalysis: {
     guiltScore: 65,

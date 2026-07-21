@@ -1,6 +1,8 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { scan, tap } from 'rxjs';
+import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
+import { AdoptedAnimalsStore } from '../../data/adopted-animals-store';
 import { Button } from '../../ui/button/button';
 import { CaseFileCard } from '../../ui/case-file-card/case-file-card';
 import { ChatBubble } from '../../ui/chat-bubble/chat-bubble';
@@ -108,6 +110,8 @@ let nextRequestId = 0;
 })
 export class Concierge {
   private readonly chatService = inject(ConciergeChatService);
+  private readonly admittedAnimalsStore = inject(AdmittedAnimalsStore);
+  private readonly adoptedAnimalsStore = inject(AdoptedAnimalsStore);
   private lastFinalizedRequestId = -1;
 
   protected draft = signal('');
@@ -123,28 +127,33 @@ export class Concierge {
   protected readonly chatStream = rxResource({
     params: () => this.pendingRequest(),
     stream: ({ params }) =>
-      this.chatService.streamChat(params.message).pipe(
-        tap((event) => {
-          if (event.type === 'tool_result') {
-            this.candidateAnimals.set(event.animals);
-          }
-        }),
-        scan(
-          (state: ChatStreamState, event: ChatSseEvent): ChatStreamState => {
-            switch (event.type) {
-              case 'token':
-                return { ...state, text: state.text + event.token };
-              case 'done':
-                return { ...state, done: true };
-              case 'error':
-                return { ...state, done: true, error: { code: event.code, message: event.message } };
-              default:
-                return state;
+      this.chatService
+        .streamChat(params.message, {
+          admittedCount: this.admittedAnimalsStore.admitted().length,
+          adoptedCount: this.adoptedAnimalsStore.adoptions().length,
+        })
+        .pipe(
+          tap((event) => {
+            if (event.type === 'tool_result') {
+              this.candidateAnimals.set(event.animals);
             }
-          },
-          { text: '', done: false },
+          }),
+          scan(
+            (state: ChatStreamState, event: ChatSseEvent): ChatStreamState => {
+              switch (event.type) {
+                case 'token':
+                  return { ...state, text: state.text + event.token };
+                case 'done':
+                  return { ...state, done: true };
+                case 'error':
+                  return { ...state, done: true, error: { code: event.code, message: event.message } };
+                default:
+                  return state;
+              }
+            },
+            { text: '', done: false },
+          ),
         ),
-      ),
   });
 
   protected readonly streamingText = computed(() => this.chatStream.value()?.text ?? '');

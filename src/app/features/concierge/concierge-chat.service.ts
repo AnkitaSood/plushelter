@@ -88,7 +88,7 @@ export class ConciergeChatService {
    * cancellation-driven abort — resolves through `complete()`, never `error()`, so callers
    * have exactly one place (the `error` event) to handle anything going wrong.
    */
-  streamChat(message: string): Observable<ChatSseEvent> {
+  streamChat(message: string, sessionCounts: { admittedCount: number; adoptedCount: number }): Observable<ChatSseEvent> {
     return new Observable<ChatSseEvent>((subscriber) => {
       const controller = new AbortController();
 
@@ -97,7 +97,7 @@ export class ConciergeChatService {
           const response = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message }),
+            body: JSON.stringify({ message, ...sessionCounts }),
             signal: controller.signal,
           });
 

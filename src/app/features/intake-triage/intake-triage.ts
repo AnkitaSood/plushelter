@@ -1,4 +1,4 @@
-import { Component, computed, effect, inject, linkedSignal, signal } from '@angular/core';
+import { Component, computed, inject, linkedSignal, signal } from '@angular/core';
 import { httpResource } from '@angular/common/http';
 import { form } from '@angular/forms/signals';
 import { Router } from '@angular/router';
@@ -94,7 +94,10 @@ export function caseFileToUnderRepairAnimal(fields: {
             }
 
             @if (triageError(); as triageErr) {
-              <app-status-badge status="critical">{{ triageErr.message }}</app-status-badge>
+              <div class="intake__error" role="alert">
+                <app-status-badge status="critical">{{ triageErr.message }}</app-status-badge>
+                <app-button type="button" variant="secondary" (click)="triageResource.reload()">Retry</app-button>
+              </div>
             }
 
             @if (triageResource.hasValue()) {
@@ -217,6 +220,13 @@ export function caseFileToUnderRepairAnimal(fields: {
       opacity: 0.75;
     }
 
+    .intake__error {
+      display: flex;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
     .intake__layout {
       display: flex;
       flex-direction: column;
@@ -271,17 +281,6 @@ export class IntakeTriage {
 
   /** Selected intake method, two-way bound to the aria TabList. Seeds the photo tab as the default. */
   protected readonly mode = signal<string | undefined>('photo');
-
-  constructor() {
-    // Surface backend failures as retryable alert toasts (in addition to the inline badge).
-    effect(() => {
-      if (this.triageResource.error()) {
-        this.notifications.alert(this.triageError()?.message ?? 'Triage failed.', {
-          onRetry: () => this.triageResource.reload(),
-        });
-      }
-    });
-  }
 
   protected readonly uploadedPhoto = signal<UploadedPhoto | undefined>(undefined);
   protected readonly completedSteps = signal<ReadonlySet<string>>(new Set());

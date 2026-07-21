@@ -26,10 +26,10 @@ export const routes: Routes = [
         path: 'adopt',
         loadComponent: () => import('./features/adoption/adoption').then((m) => m.AdoptionFlow),
       },
-      {
-        path: 'agent-console',
-        loadComponent: () => import('./features/agent-console/agent-console').then((m) => m.AgentConsole),
-      },
+      // {
+      //   path: 'agent-console',
+      //   loadComponent: () => import('./features/agent-console/agent-console').then((m) => m.AgentConsole),
+      // },
       {
         path: '',
         providers: [provideEnvironmentInitializer(() => void inject(ShelterAgentService))],

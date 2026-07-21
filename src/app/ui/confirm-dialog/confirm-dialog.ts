@@ -5,6 +5,10 @@ import { Button } from '../button/button';
 export interface ConfirmDialogData {
   title: string;
   message: string;
+  detail?: {
+    label: string;
+    value: string;
+  };
   confirmLabel?: string;
   cancelLabel?: string;
 }
@@ -14,7 +18,15 @@ export interface ConfirmDialogData {
   imports: [Button],
   template: `
     <h2 [id]="titleId" class="confirm-dialog__title">{{ data.title }}</h2>
-    <p [id]="messageId" class="confirm-dialog__message">{{ data.message }}</p>
+    <div [id]="messageId" class="confirm-dialog__content">
+      <p class="confirm-dialog__message">{{ data.message }}</p>
+      @if (data.detail; as detail) {
+        <dl class="confirm-dialog__detail">
+          <dt>{{ detail.label }}</dt>
+          <dd>{{ detail.value }}</dd>
+        </dl>
+      }
+    </div>
     <div class="confirm-dialog__actions">
       <app-button variant="secondary" (click)="dialogRef.close(false)">
         {{ data.cancelLabel ?? 'Cancel' }}
@@ -43,8 +55,32 @@ export interface ConfirmDialogData {
       margin: 0 0 var(--space-3);
     }
 
-    .confirm-dialog__message {
+    .confirm-dialog__content {
       margin: 0 0 var(--space-5);
+    }
+
+    .confirm-dialog__message {
+      margin: 0;
+    }
+
+    .confirm-dialog__detail {
+      margin: var(--space-4) 0 0;
+      padding: var(--space-3);
+      background: var(--color-info);
+      border: var(--border-width) solid var(--border-color);
+      border-radius: var(--radius-sm);
+    }
+
+    .confirm-dialog__detail dt {
+      margin-bottom: var(--space-1);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .confirm-dialog__detail dd {
+      margin: 0;
     }
 
     .confirm-dialog__actions {

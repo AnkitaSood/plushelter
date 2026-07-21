@@ -1,6 +1,5 @@
-/** The public surrender-request intake form model. Every field has a concrete, non-empty
- * initial value (and `preferredContactTimes` starts non-empty) so the WebMCP implicit-tool
- * schema inference can derive types — empty strings/arrays or null would break inference. */
+/** The public surrender-request intake form model. Fields that participate in WebMCP schema
+ * inference use concrete initial values so the generated tool can derive their types. */
 export interface SurrenderRequest {
   ownerName: string;
   animalName: string;
@@ -8,7 +7,6 @@ export interface SurrenderRequest {
   /** The animal's current condition, as described by the surrendering owner. */
   condition: string;
   reason: string;
-  preferredContactTimes: string[];
 }
 
 export const EMPTY_SURRENDER_REQUEST: SurrenderRequest = {
@@ -17,5 +15,4 @@ export const EMPTY_SURRENDER_REQUEST: SurrenderRequest = {
   species: 'Bear',
   condition: '',
   reason: '',
-  preferredContactTimes: ['morning'],
 };

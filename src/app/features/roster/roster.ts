@@ -1,4 +1,4 @@
-import { Component, computed, debounced, effect, inject, resource, signal } from '@angular/core';
+import { Component, computed, debounced, inject, resource, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { CaseFileCard } from '../../ui/case-file-card/case-file-card';
 import { FormField } from '../../ui/form-field/form-field';
@@ -6,11 +6,11 @@ import { StatusBadge, type StatusBadgeStatus } from '../../ui/status-badge/statu
 import { Animal, MOCK_ANIMALS } from '../../data/roster';
 import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
 import { AdoptedAnimalsStore } from '../../data/adopted-animals-store';
-import { NotificationService } from '../../ui/notifications/notification.service';
-import type { RosterSearchResult } from './roster-search.model';
+import { Button } from '../../ui/button/button';
+import type { RosterSearchErrorBody, RosterSearchResult } from './roster-search.model';
 
 @Component({
-  imports: [CaseFileCard, FormField, StatusBadge],
+  imports: [Button, CaseFileCard, FormField, StatusBadge],
   template: `
     <section class="roster">
       <h1>Active Case Roster</h1>
@@ -31,6 +31,7 @@ import type { RosterSearchResult } from './roster-search.model';
             <app-status-badge status="info">Searching the roster…</app-status-badge>
           } @else if (searchError(); as err) {
             <app-status-badge status="critical">{{ err.message }}</app-status-badge>
+            <app-button type="button" variant="secondary" (click)="searchResults.reload()">Retry</app-button>
           } @else if (isSearchActive()) {
             <app-status-badge status="available">{{ displayedAnimals().length }} match(es)</app-status-badge>
           }
@@ -200,18 +201,6 @@ export class Roster {
   private readonly router = inject(Router);
   private readonly admittedStore = inject(AdmittedAnimalsStore);
   protected readonly adoptedStore = inject(AdoptedAnimalsStore);
-  private readonly notifications = inject(NotificationService);
-
-  constructor() {
-    // Search failures surface as a retryable alert toast, alongside the inline badge.
-    effect(() => {
-      if (this.searchResults.error()) {
-        this.notifications.alert(this.searchError()?.message ?? 'Roster search failed.', {
-          onRetry: () => this.searchResults.reload(),
-        });
-      }
-    });
-  }
 
   protected readonly speciesFilter = signal<string>('');
   protected readonly statusFilter = signal<'all' | 'available'>('all');
@@ -246,7 +235,7 @@ export class Roster {
         signal: abortSignal,
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => undefined);
+        const body: RosterSearchErrorBody | undefined = await res.json().catch(() => undefined);
         throw new Error(body?.error?.message ?? `Search failed (${res.status})`);
       }
       return (await res.json()) as RosterSearchResult;

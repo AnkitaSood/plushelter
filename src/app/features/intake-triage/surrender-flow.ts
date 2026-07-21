@@ -1,7 +1,9 @@
 import { Component, computed, debounced, effect, inject, signal } from '@angular/core';
-import { httpResource } from '@angular/common/http';
+import { HttpClient, httpResource } from '@angular/common/http';
+import { Dialog } from '@angular/cdk/dialog';
 import { form, required, submit } from '@angular/forms/signals';
 import { Router } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
 import { Button } from '../../ui/button/button';
 import { FormField } from '../../ui/form-field/form-field';
 import { TextareaField } from '../../ui/textarea-field/textarea-field';
@@ -75,14 +77,14 @@ export function surrenderToPhotosPendingAnimal(request: SurrenderRequest): Anima
       />
 
       @if (surrenderRiskError(); as riskErr) {
-        <app-status-badge status="critical">{{ riskErr.message }}</app-status-badge>
+        <div class="surrender-flow__error" role="alert">
+          <app-status-badge status="critical">{{ riskErr.message }}</app-status-badge>
+          <app-button type="button" variant="secondary" (click)="retrySurrenderRisk()">Retry</app-button>
+        </div>
       } @else if (surrenderRiskDisplay(); as risk) {
         <app-textarea-field label="Surrender risk assessment" [value]="risk" [readonly]="true" />
       }
 
-      <p class="surrender-flow__contact">
-        Preferred contact times on file: {{ surrenderForm.preferredContactTimes().value().join(', ') }}
-      </p>
       <app-button type="submit">Submit surrender request</app-button>
     </form>
   `,
@@ -116,11 +118,19 @@ export function surrenderToPhotosPendingAnimal(request: SurrenderRequest): Anima
     }
     .surrender-flow__select:focus { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: 2px; }
 
-    .surrender-flow__contact { margin: 0; font-family: var(--font-mono); font-size: var(--text-xs); opacity: 0.75; }
+    .surrender-flow__error {
+      display: flex;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
   `,
 })
 export class SurrenderFlow {
   private readonly router = inject(Router);
+  private readonly dialog = inject(Dialog);
+  private readonly http = inject(HttpClient);
   private readonly admittedStore = inject(AdmittedAnimalsStore);
   private readonly requestsStore = inject(SurrenderRequestsStore);
   private readonly notifications = inject(NotificationService);
@@ -129,15 +139,17 @@ export class SurrenderFlow {
 
   private readonly model = signal<SurrenderRequest>({ ...EMPTY_SURRENDER_REQUEST });
   private readonly submitAttempted = signal(false);
+  private readonly latestAssessment = signal<{ reason: string; analysis: GuiltAnalysis } | undefined>(undefined);
+  private readonly assessmentSubmissionError = signal<{ reason: string; message: string } | undefined>(undefined);
 
   constructor() {
-    // Surface a failed surrender-risk read as a retryable alert toast, alongside the inline badge.
     effect(() => {
-      if (this.surrenderRiskResource.error()) {
-        this.notifications.alert(this.surrenderRiskError()?.message ?? 'Surrender assessment failed.', {
-          onRetry: () => this.surrenderRiskResource.reload(),
-        });
+      const analysis = this.surrenderRiskResource.value();
+      const reason = (this.debouncedReason.value() ?? '').trim();
+      if (analysis && reason) {
+        this.latestAssessment.set({ reason, analysis });
       }
+
     });
   }
 
@@ -164,6 +176,30 @@ export class SurrenderFlow {
       submission: {
         action: async (field) => {
           const request = field().value() as SurrenderRequest;
+          const analysis = await this.assessmentFor(request.reason);
+          if (!analysis) return undefined;
+
+          const { ConfirmDialog } = await import('../../ui/confirm-dialog/confirm-dialog');
+          const ref = this.dialog.open<boolean>(ConfirmDialog, {
+            data: {
+              title: 'Confirm surrender request',
+              message: `Review the surrender risk assessment for ${request.animalName || 'this animal'} before filing.`,
+              detail: {
+                label: 'Surrender risk assessment',
+                value: `${analysis.guiltScore}/100 — ${analysis.message}`,
+              },
+              confirmLabel: 'File surrender',
+              cancelLabel: 'Go back',
+            },
+            ariaModal: true,
+            ariaLabelledBy: 'confirm-dialog-title',
+            ariaDescribedBy: 'confirm-dialog-message',
+            backdropClass: 'app-dialog-backdrop',
+          });
+
+          const confirmed = await firstValueFrom(ref.closed);
+          if (!confirmed) return undefined;
+
           this.requestsStore.add(request);
           this.admittedStore.admit(surrenderToPhotosPendingAnimal(request));
           this.notifications.info(`${request.animalName || 'The animal'} admitted to the roster — photos pending.`);
@@ -176,10 +212,10 @@ export class SurrenderFlow {
     },
   );
 
-  /** Live surrender-risk read: the reason field, debounced 400ms so we don't call Gemini on every
+  /** Live surrender-risk read: the reason field, debounced 600ms so we don't call Gemini on every
    * keystroke, drives an httpResource. Empty reason → `undefined` request → the resource stays idle. */
   private readonly reasonText = computed(() => this.surrenderForm.reason().value());
-  private readonly debouncedReason = debounced(this.reasonText, 400);
+  private readonly debouncedReason = debounced(this.reasonText, 600);
 
   protected readonly surrenderRiskResource = httpResource<GuiltAnalysis>(() => {
     const text = (this.debouncedReason.value() ?? '').trim();
@@ -188,12 +224,22 @@ export class SurrenderFlow {
   });
 
   protected readonly surrenderRiskDisplay = computed(() => {
-    if (this.surrenderRiskResource.isLoading()) return 'Assessing…';
-    const value = this.surrenderRiskResource.value();
+    const reason = this.reasonText().trim();
+    const latest = this.latestAssessment();
+    const value = latest?.reason === reason ? latest.analysis : this.surrenderRiskResource.value();
+    if (!value && this.surrenderRiskResource.isLoading()) return 'Assessing…';
     return value ? `${value.guiltScore}/100 — ${value.message}` : '';
   });
 
   protected readonly surrenderRiskError = computed(() => {
+    const submissionError = this.assessmentSubmissionError();
+    if (submissionError?.reason === this.reasonText().trim()) {
+      return { code: 'UPSTREAM_ERROR', message: submissionError.message };
+    }
+
+    const latest = this.latestAssessment();
+    if (latest?.reason === this.reasonText().trim()) return undefined;
+
     const error = this.surrenderRiskResource.error();
     if (!error) return undefined;
     const body = (error as { error?: SurrenderRiskErrorBody })?.error?.error;
@@ -208,6 +254,35 @@ export class SurrenderFlow {
   protected async submitSurrender(): Promise<void> {
     this.submitAttempted.set(true);
     await submit(this.surrenderForm);
+  }
+
+  protected retrySurrenderRisk(): void {
+    if (this.assessmentSubmissionError()?.reason === this.reasonText().trim()) {
+      void this.submitSurrender();
+      return;
+    }
+    this.surrenderRiskResource.reload();
+  }
+
+  private async assessmentFor(reason: string): Promise<GuiltAnalysis | undefined> {
+    const normalizedReason = reason.trim();
+    const latest = this.latestAssessment();
+    if (latest?.reason === normalizedReason) return latest.analysis;
+
+    try {
+      this.assessmentSubmissionError.set(undefined);
+      const analysis = await firstValueFrom(
+        this.http.post<GuiltAnalysis>('/api/surrender-analysis', { submittedText: normalizedReason }),
+      );
+      this.latestAssessment.set({ reason: normalizedReason, analysis });
+      return analysis;
+    } catch {
+      this.assessmentSubmissionError.set({
+        reason: normalizedReason,
+        message: 'Something went wrong assessing surrender risk. Please try again.',
+      });
+      return undefined;
+    }
   }
 
   private errorText(errors: readonly unknown[]): string {

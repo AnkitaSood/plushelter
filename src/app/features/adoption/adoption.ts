@@ -58,10 +58,14 @@ import {
             }
 
             @if (certificateError(); as err) {
-              <app-status-badge status="critical">{{ err.message }}</app-status-badge>
+              <div class="adoption__error" role="alert">
+                <app-status-badge status="critical">{{ err.message }}</app-status-badge>
+                <app-button type="button" variant="secondary" (click)="certificateResource.reload()">Retry</app-button>
+              </div>
             }
 
             <div class="adoption__actions">
+              <app-button type="button" variant="secondary" (click)="backToRoster()">← Back to Roster</app-button>
               <app-button
                 type="button"
                 [disabled]="!canSubmit() || certificateResource.isLoading()"
@@ -69,7 +73,6 @@ import {
               >
                 Confirm Adoption
               </app-button>
-              <app-button type="button" variant="secondary" (click)="backToRoster()">← Back to Roster</app-button>
             </div>
           </div>
         } @else {
@@ -145,6 +148,13 @@ import {
       text-transform: uppercase;
       letter-spacing: 0.05em;
       opacity: 0.75;
+    }
+
+    .adoption__error {
+      display: flex;
+      gap: var(--space-2);
+      flex-wrap: wrap;
+      align-items: center;
     }
 
     /* The one deliberate Adoption Pink moment in the app — reserved exclusively for a
@@ -269,14 +279,6 @@ export class AdoptionFlow {
       }
     });
 
-    // Placement failures become retryable alert toasts.
-    effect(() => {
-      if (this.certificateResource.error()) {
-        this.notifications.alert(this.certificateError()?.message ?? 'Placement failed.', {
-          onRetry: () => this.certificateResource.reload(),
-        });
-      }
-    });
   }
 
   /** Confirms, then commits the adoption and kicks off the certificate resource. ConfirmDialog

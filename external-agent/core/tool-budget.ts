@@ -1,6 +1,8 @@
 const DEFAULT_MAX_INVOKES = 3;
 const DEFAULT_MAX_LIST = 1;
 const MAX_TRACKED_INVOCATIONS = 200;
+const DEFAULT_RATE_WINDOW_MS = 5 * 60 * 1000;
+const DEFAULT_MAX_INVOKES_PER_WINDOW = 20;
 
 interface InvocationBudget {
   invokeCount: number;
@@ -10,9 +12,45 @@ interface InvocationBudget {
 
 const budgets = new Map<string, InvocationBudget>();
 
+/** Timestamps (ms) of every invoke_webmcp_tool call, oldest first — spans all messages/invocations
+ * in this agent process, unlike InvocationBudget which resets per user message. */
+const invokeTimestamps: number[] = [];
+
 function parseLimit(raw: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(raw ?? '', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function pruneInvokeTimestamps(windowMs: number): void {
+  const cutoff = Date.now() - windowMs;
+  while (invokeTimestamps.length > 0 && invokeTimestamps[0] < cutoff) {
+    invokeTimestamps.shift();
+  }
+}
+
+/**
+ * Global sliding-window rate check for invoke_webmcp_tool, independent of the per-message
+ * budget below — catches a runaway agent spread across many short messages, not just one.
+ */
+function checkInvokeRateWindow(): Record<string, unknown> | undefined {
+  const windowMs = parseLimit(process.env['WEBMCP_RATE_WINDOW_MS'], DEFAULT_RATE_WINDOW_MS);
+  const maxPerWindow = parseLimit(
+    process.env['WEBMCP_MAX_INVOKES_PER_WINDOW'],
+    DEFAULT_MAX_INVOKES_PER_WINDOW,
+  );
+
+  pruneInvokeTimestamps(windowMs);
+
+  if (invokeTimestamps.length >= maxPerWindow) {
+    return budgetError(
+      'rate_window_exceeded',
+      `invoke_webmcp_tool rate limit (${maxPerWindow} per ${Math.round(windowMs / 1000)}s) reached. Wait before calling more tools.`,
+      { windowMs, maxPerWindow, callsInWindow: invokeTimestamps.length },
+    );
+  }
+
+  invokeTimestamps.push(Date.now());
+  return undefined;
 }
 
 function getBudget(invocationId: string): InvocationBudget {
@@ -89,6 +127,13 @@ export function enforceToolBudget({
       `Tool "${toolName}" was already called this turn. Do not retry with different parameters. Answer from that result.`,
       { tool_name: toolName },
     );
+  }
+
+  // Checked last, and only recorded once every per-message gate above has already passed —
+  // this window spans the whole agent process, not just the current message.
+  const rateLimited = checkInvokeRateWindow();
+  if (rateLimited) {
+    return rateLimited;
   }
 
   budget.invokeCount += 1;

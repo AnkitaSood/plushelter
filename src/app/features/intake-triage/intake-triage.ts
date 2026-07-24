@@ -87,10 +87,12 @@ export function caseFileToUnderRepairAnimal(fields: {
         </div>
         <div ngTabPanel value="photo" class="intake__panel">
           <ng-template ngTabContent>
+            @if (!triageResource.hasValue()) {
             <div class="intake__upload">
               <input #fileInput type="file" accept="image/*" class="intake__file-input" (change)="onPhotoSelected($event)" />
               <app-button type="button" (click)="fileInput.click()">Upload a photo</app-button>
             </div>
+            }
 
             @if (triageResource.isLoading()) {
               <div class="intake__loading">
@@ -257,6 +259,7 @@ export function caseFileToUnderRepairAnimal(fields: {
       display: flex;
       flex-direction: column;
       gap: var(--space-2);
+      margin-bottom: var(--space-4);
     }
 
     .intake__treatment h2 {

@@ -1,4 +1,13 @@
-import { Component, ElementRef, effect, inject, signal, viewChild } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  ElementRef,
+  afterNextRender,
+  effect,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { Button } from '../../ui/button/button';
 import { AgentRunnerService } from './agent-runner.service';
 
@@ -11,7 +20,7 @@ import { AgentRunnerService } from './agent-runner.service';
   selector: 'app-agent-panel',
   imports: [Button],
   template: `
-    <div class="dock">
+    <div class="dock" [style.top.px]="dockTop()">
       @if (open()) {
         <section class="panel" role="region" aria-label="WebMCP agent">
           <header class="panel__head">
@@ -102,12 +111,9 @@ import { AgentRunnerService } from './agent-runner.service';
   styles: `
     .dock {
       position: fixed;
-      /* CSS anchor positioning: pins the dock's top edge to the bottom edge of the app shell's
-       * .app-nav (named via anchor-name in app.css), so it tracks the header's real rendered
-       * height -- including its responsive wrapping -- with no JS measurement. Chrome-only today
-       * (not yet in Firefox/Safari); the 0px fallback keeps unsupported browsers from breaking. */
-      position-anchor: --app-nav;
-      top: anchor(bottom, 0px);
+      /* top is set inline via [style.top.px] -- see dockTop() below. It has to track how much
+       * of .app-nav is still on screen (not a fixed length), so the panel starts right below
+       * the header while it's visible and expands to full height once it's scrolled away. */
       right: 0;
       bottom: 0;
       z-index: 1000;
@@ -297,6 +303,9 @@ export class AgentPanel {
   protected readonly open = signal(false);
   protected readonly draft = signal('');
 
+  /** How much of the app shell's header is still on screen -- 0 once it's scrolled past. */
+  protected readonly dockTop = signal(0);
+
   /** Stable for the session — whether a real WebMCP surface is present vs the registry fallback. */
   protected readonly liveHint = this.runner.webMcpAvailable()
     ? 'live · document.modelContext'
@@ -306,6 +315,21 @@ export class AgentPanel {
     // Move focus to the composer whenever the panel opens (keyboard + screen-reader friendly).
     effect(() => {
       if (this.open()) this.inputEl()?.nativeElement.focus();
+    });
+
+    const destroyRef = inject(DestroyRef);
+    afterNextRender(() => {
+      const updateDockTop = () => {
+        const navHeight = document.querySelector('.app-nav')?.getBoundingClientRect().height ?? 0;
+        this.dockTop.set(Math.max(0, navHeight - window.scrollY));
+      };
+      updateDockTop();
+      window.addEventListener('scroll', updateDockTop, { passive: true });
+      window.addEventListener('resize', updateDockTop);
+      destroyRef.onDestroy(() => {
+        window.removeEventListener('scroll', updateDockTop);
+        window.removeEventListener('resize', updateDockTop);
+      });
     });
   }
 

@@ -68,17 +68,23 @@ export function caseFileToUnderRepairAnimal(fields: {
   ],
   template: `
     <section class="intake">
-      <h1>Intake / Surrender</h1>
+      <h1>Surrender / Intake</h1>
       <p class="intake__intro">
-        Bring a stuffed animal into S.A.R.F. either way: upload a photo or file a surrender if you don't have a photo yet.
+        Bring a stuffed animal into S.A.R.F. either way: fill form to surrender, or upload a photo to initiate intake.
       </p>
 
       <div ngTabs class="intake__tabs">
         <ul ngTabList [(selectedTab)]="mode" class="intake__tablist" aria-label="Intake method">
-          <li ngTab value="photo" class="intake__tab">Intake</li>
           <li ngTab value="surrender" class="intake__tab">Surrender</li>
+          <li ngTab value="photo" class="intake__tab">Intake</li>
         </ul>
 
+
+        <div ngTabPanel value="surrender" class="intake__panel">
+          <ng-template ngTabContent>
+            <app-surrender-flow />
+          </ng-template>
+        </div>
         <div ngTabPanel value="photo" class="intake__panel">
           <ng-template ngTabContent>
             <div class="intake__upload">
@@ -128,12 +134,6 @@ export function caseFileToUnderRepairAnimal(fields: {
                 <app-button type="button" variant="secondary" (click)="clear()">Start over</app-button>
               </div>
             }
-          </ng-template>
-        </div>
-
-        <div ngTabPanel value="surrender" class="intake__panel">
-          <ng-template ngTabContent>
-            <app-surrender-flow />
           </ng-template>
         </div>
       </div>
@@ -280,7 +280,7 @@ export class IntakeTriage {
   private readonly notifications = inject(NotificationService);
 
   /** Selected intake method, two-way bound to the aria TabList. Seeds the photo tab as the default. */
-  protected readonly mode = signal<string | undefined>('photo');
+  protected readonly mode = signal<string | undefined>('surrender');
 
   protected readonly uploadedPhoto = signal<UploadedPhoto | undefined>(undefined);
   protected readonly completedSteps = signal<ReadonlySet<string>>(new Set());

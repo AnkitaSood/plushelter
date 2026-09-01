@@ -37,6 +37,7 @@
         "npm:express@^5.1.0",
         "npm:istanbul-lib-instrument@^6.0.3",
         "npm:jsdom@^29.1.1",
+        "npm:ollama@~0.6.3",
         "npm:puppeteer@^25.3.0",
         "npm:rxjs@7.8",
         "npm:tslib@^2.3.0",

@@ -1,4 +1,4 @@
-Persistent context for any agent session working in this repo. Keep this short — detail lives in `specs.md` (what to build) and `tasks.md` (how it's sequenced). Read both before writing code.
+Persistent context for any agent session working in this repo. Keep this short — detail lives in `PRODUCT.md` and `DESIGN.md` (with historical task breakdowns in `.claude/tasks.md` and `.claude/specs.md`). Read both before writing code.
 
 ## What this is
 
@@ -6,51 +6,49 @@ Persistent context for any agent session working in this repo. Keep this short �
 
 ## Non-negotiable constraints
 
-- **Zero dollar cost.** Every feature runs on Gemini's free tier (`gemini-3.5-flash`, fallback `gemini-3-flash-preview` / `gemini-2.5-flash`). No image or video generation model is used anywhere — see `specs.md` NFR-1 for why.
-- **No Tailwind. No installed component library (ZardUI, Angular Material, etc.).** Styling is a small, hand-built design system in plain CSS. See `specs.md` §6.
+- **Zero dollar cost.** Every feature runs on Gemini's free tier (`gemini-3.1-flash-lite`, overridable via `GEMINI_TEST_MODEL`). No image or video generation model is used anywhere — see `PRODUCT.md` NFR-1 for why.
+- **No Tailwind. No installed component library (ZardUI, Angular Material, etc.).** Styling is a small, hand-built design system in plain CSS. See `DESIGN.md`.
 - **Netlify only**, split across regular Functions (single request/response) and Edge Functions (the one streaming endpoint). Never introduce Express, a separate Node server, or another hosting target.
 - **`GEMINI_API_KEY` is never committed, never referenced client-side.** It's read only via `Netlify.env.get(...)` inside `netlify/functions/*` and `netlify/edge-functions/*`.
 - **Call the Angular MCP server's `get_best_practices` before writing or modifying any Angular code, every session.** This is the single highest-leverage guardrail against confidently-wrong outdated Angular patterns (constructor injection, `*ngIf`, unneeded `CommonModule` imports).
 - **Use the `gemini-interactions-api` skill for anything touching the Gemini API.** It encodes current model names and the Interactions API's request/event shapes — don't rely on general training-data knowledge of "the Gemini SDK," which is very likely stale.
-- **Don't invoke Impeccable commands automatically.** `/impeccable audit`, `critique`, and `polish` are run manually by the repo owner once `DEMO_MODE` has real content — see `tasks.md` Phase 4. Agents shouldn't call these mid-feature-work.
+- **Don't invoke Impeccable commands automatically.** `/impeccable audit`, `critique`, and `polish` are run manually by the repo owner once `DEMO_MODE` has real content. Agents shouldn't call these mid-feature-work.
 ## Tech stack
 
 | Layer | Choice |
 |---|---|
-| Framework | Angular 22 (confirm with `ng version` — package.json pins `^22.0.5`), standalone components, zoneless, OnPush default |
-| Styling | Plain CSS custom properties against the palette/type system in `specs.md` §6 — no Tailwind |
+| Framework | Angular 22 (package.json pins `^22.1.4`), standalone components, zoneless, OnPush default |
+| Styling | Plain CSS custom properties against the palette/type system in `DESIGN.md` (Karla body, Fredoka display, Space Mono stamps) — no Tailwind |
 | Hosting/backend | Netlify: `netlify/functions/*.mts` (Node) + `netlify/edge-functions/*.mts` (Deno) |
-| AI | `gemini-3.5-flash` via plain `fetch()` against the Interactions API REST endpoint — no `@google/genai` SDK dependency |
+| AI | `gemini-3.1-flash-lite` via plain `fetch()` against the Interactions API REST endpoint — no `@google/genai` SDK dependency in production paths |
 | Testing | **Vitest only.** `angular.json`'s `test` target uses the `@angular/build:unit-test` builder; Karma/Jasmine packages have been removed. Don't write or generate tests against Karma. |
 
 ## Repo map
 
 ```
 .Codex/           Codex config (MCP servers, skills) — already configured
-.gemini/           Gemini CLI/skills config — already configured
-public/            static assets
-src/               Angular app
-netlify/           NOT YET CREATED — functions/, edge-functions/, and netlify.toml go here (Phase 0)
-specs.md           canonical spec — what gets built, with acceptance criteria
-tasks.md           phased, agent-executable task breakdown
+.gemini/          Gemini CLI/skills config — already configured
+public/           static assets
+src/              Angular app
+netlify/          functions/, edge-functions/, and netlify.toml
+PRODUCT.md        canonical product spec — what gets built, with acceptance criteria
+DESIGN.md         canonical design system specification
 ```
-
-Note: `README.md` currently says "generated using Angular CLI version 20.3.1" — that's stale boilerplate; `package.json` confirms `^22.0.5`. Fix the README text as a small Phase 0 cleanup task.
 
 ## Commands
 
 ```bash
 ng serve              # Angular dev server alone (no backend)
 netlify dev           # Angular + Functions + Edge Functions together — use this for real feature work
-ng test               # unit tests — confirm runner first (see Testing row above)
+ng test               # unit tests (Vitest via @angular/build:unit-test)
 ng build              # production build, confirms nothing's broken before a deploy
 ```
 
 ## Where the rest of the context lives
 
-- `specs.md` — the full functional/non-functional spec, design system, data model, and API contracts.
-- `tasks.md` — the phased build plan mapped to specific sub-agent roles and tool calls.
-- The original talk outline and longer-form requirements narrative exist outside this repo, in the conversation history that produced these docs — `specs.md` is the distilled, implementation-ready version of that material and should be treated as current over anything that conflicts with it.
+- `PRODUCT.md` — the full functional/non-functional product spec, data model, and user journeys.
+- `DESIGN.md` — design tokens, typography, component guidelines, and palette rules.
+- `.claude/specs.md` and `.claude/tasks.md` — historical phased planning documents.
 ---
 
 ## General coding conventions

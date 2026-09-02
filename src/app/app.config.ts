@@ -7,14 +7,12 @@ import { provideRouter, withExperimentalAutoCleanupInjectors } from '@angular/ro
 import { provideExperimentalWebMcpForms } from '@angular/forms/signals';
 
 import { routes } from './app.routes';
-import { provideClientHydration } from '@angular/platform-browser';
 
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideRouter(routes, withExperimentalAutoCleanupInjectors()),
     provideHttpClient(),
-    provideClientHydration(),
     provideExperimentalWebMcpForms(),
   ],
 };

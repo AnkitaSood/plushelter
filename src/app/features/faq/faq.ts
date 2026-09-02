@@ -20,7 +20,7 @@ import {CritterLoader} from '../../ui/critter-loader/critter-loader';
             <h2>{{ category.icon }} {{ category.title }}</h2>
           </div>
 
-          @defer (hydrate on viewport) {
+          @defer (on viewport) {
             <div ngAccordionGroup class="faq-accordion-group">
               @for (item of category.items; track item.question) {
                 <div class="faq-accordion-item">

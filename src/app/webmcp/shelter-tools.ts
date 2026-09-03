@@ -27,6 +27,84 @@ function describe(a: Animal): string {
   return `${a.name} — ${a.species} (${a.condition})`;
 }
 
+export const animalDurationStatsTool: ShelterTool = {
+  name: 'getAnimalDurationStats',
+  description:
+    'Get duration statistics for shelter animals: which animal has been in the shelter for the longest time, ' +
+    'or which animal has been most recently admitted to the shelter.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      query: {
+        type: 'string',
+        description:
+          'The prompt or question, e.g. "which animal has been in the shelter for the longest time" ' +
+          'or "which animal has been most recently admitted to the shelter".',
+      },
+      type: {
+        type: 'string',
+        description: 'Specific duration metric: "longest" for longest resident, or "recent" / "most_recent" for most recently admitted.',
+        enum: ['longest', 'most_recent', 'recent', 'both'],
+      },
+    },
+    additionalProperties: true,
+  },
+  execute: (args) => {
+    const rawArgs = args ?? {};
+    let queryStr = '';
+    if (typeof rawArgs === 'string') {
+      queryStr = rawArgs;
+    } else if (typeof rawArgs === 'object' && rawArgs !== null) {
+      const obj = rawArgs as Record<string, unknown>;
+      queryStr = String(
+        obj['query'] ??
+        obj['prompt'] ??
+        obj['type'] ??
+        obj['criteria'] ??
+        obj['statType'] ??
+        obj['which'] ??
+        obj['question'] ??
+        Object.values(obj).filter((v) => typeof v === 'string').join(' ')
+      );
+    }
+    const q = queryStr.toLowerCase().trim();
+
+    const adoptedStore = inject(AdoptedAnimalsStore);
+    const admittedStore = inject(AdmittedAnimalsStore);
+    const currentAnimals = [...MOCK_ANIMALS, ...admittedStore.admitted()];
+
+    const isLongest = q.includes('long') || q.includes('oldest') || q.includes('earliest') || q.includes('first');
+    const isRecent = q.includes('recent') || q.includes('new') || q.includes('admit') || q.includes('latest') || q.includes('last');
+
+    const longest = adoptedStore.getLongestResidentAnimalInfo(currentAnimals);
+    const mostRecent = adoptedStore.getMostRecentResidentAnimal(currentAnimals);
+
+    if (!longest && !mostRecent) {
+      return text('No resident animals currently on file in the shelter.');
+    }
+
+    if (isLongest && !isRecent) {
+      if (!longest) return text('No resident animals currently on file in the shelter.');
+      return text(`${longest.name} has been in the shelter for the longest time: ${longest.duration}.`);
+    }
+
+    if (isRecent && !isLongest) {
+      if (!mostRecent) return text('No resident animals currently on file in the shelter.');
+      return text(`${mostRecent.name} has been most recently admitted to the shelter: ${mostRecent.duration}.`);
+    }
+
+    // When both or neither are explicitly targeted, return both
+    const parts: string[] = [];
+    if (longest) {
+      parts.push(`Longest resident: ${longest.name} (${longest.duration})`);
+    }
+    if (mostRecent) {
+      parts.push(`Most recently admitted: ${mostRecent.name} (${mostRecent.duration})`);
+    }
+    return text(parts.join('\n'));
+  },
+};
+
 /** APP-LEVEL: available on every route except /faq (see app.routes.ts's app-tools parent route). */
 export const searchRosterTool: ShelterTool = {
   name: 'searchRoster',
@@ -167,6 +245,7 @@ export const performCriticalMedicalProcedureTool: ShelterTool = {
 export const APP_TOOLS: ShelterTool[] = [
   searchRosterTool,
   shelterStatsTool,
+  animalDurationStatsTool,
   performCriticalMedicalProcedureTool,
 ];
 
@@ -182,6 +261,7 @@ export interface RegisteredTool {
 export const SHELTER_TOOL_REGISTRY: RegisteredTool[] = [
   { scope: 'Application', tool: searchRosterTool },
   { scope: 'Application', tool: shelterStatsTool },
+  { scope: 'Application', tool: animalDurationStatsTool },
   { scope: 'Application', tool: performCriticalMedicalProcedureTool },
   { scope: 'Route · /roster', tool: filterRosterBySpeciesTool },
   { scope: 'Service', tool: admitAnimalTool },

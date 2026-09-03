@@ -4,6 +4,7 @@ import { AdoptedAnimalsStore } from '../data/adopted-animals-store';
 import { MOCK_ANIMALS } from '../data/roster';
 import {
   admitAnimalTool,
+  animalDurationStatsTool,
   filterRosterBySpeciesTool,
   searchRosterTool,
   shelterStatsTool,
@@ -98,6 +99,67 @@ describe('shelter WebMCP tools', () => {
       expect(text).toContain('Buttons');
       expect(store.admitted().length).toBe(1);
       expect(store.admitted()[0]).toMatchObject({ name: 'Buttons', species: 'Cat', available: false, underRepair: true });
+    });
+  });
+
+  describe('getAnimalDurationStats', () => {
+    it('returns longest resident when prompted about longest time in shelter', () => {
+      const text = run(animalDurationStatsTool, {
+        query: 'which animal has been in the shelter for the longest time',
+      });
+      expect(text).toContain('Shelley');
+      expect(text).toContain('has been in the shelter for the longest time');
+      expect(text).toContain('years');
+    });
+
+    it('returns most recently admitted resident when prompted about most recently admitted', () => {
+      const text = run(animalDurationStatsTool, {
+        query: 'which animal has been most recently admitted to the shelter',
+      });
+      expect(text).toContain('Elwyn');
+      expect(text).toContain('has been most recently admitted to the shelter');
+      expect(text).toContain('years');
+    });
+
+    it('handles explicit type filter parameters', () => {
+      const longestText = run(animalDurationStatsTool, { type: 'longest' });
+      expect(longestText).toContain('Shelley');
+
+      const recentText = run(animalDurationStatsTool, { type: 'recent' });
+      expect(recentText).toContain('Elwyn');
+    });
+
+    it('always reflects the most recent updates to the store (admissions and adoptions)', () => {
+      // 1. Newly admitted animal becomes the most recent resident
+      const admittedStore = TestBed.inject(AdmittedAnimalsStore);
+      admittedStore.admit({
+        id: 'new-zebra-id',
+        name: 'Ziggy',
+        species: 'Zebra',
+        condition: 'Mint',
+        backstory: 'A recent arrival',
+        available: true,
+        surrenderedAt: new Date().toISOString(),
+      });
+
+      const recentText = run(animalDurationStatsTool, { query: 'most recently admitted' });
+      expect(recentText).toContain('Ziggy');
+
+      // 2. Adopting Shelley causes next earliest (Misha) to become the longest resident
+      const adoptedStore = TestBed.inject(AdoptedAnimalsStore);
+      adoptedStore.adopt('009', 'Ankita'); // Shelley is 009
+
+      const longestText = run(animalDurationStatsTool, { query: 'longest time in the shelter' });
+      expect(longestText).toContain('Misha');
+      expect(longestText).not.toContain('Shelley');
+    });
+
+    it('returns both stats when called with empty or generic query', () => {
+      const text = run(animalDurationStatsTool, {});
+      expect(text).toContain('Longest resident:');
+      expect(text).toContain('Most recently admitted:');
+      expect(text).toContain('Shelley');
+      expect(text).toContain('Elwyn');
     });
   });
 });

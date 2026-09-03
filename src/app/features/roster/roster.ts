@@ -90,6 +90,11 @@ import type { RosterSearchErrorBody, RosterSearchResult } from './roster-search.
               <app-status-badge [status]="badgeStatus(item.animal)">
                 {{ statusLabel(item.animal) }}
               </app-status-badge>
+              @if (item.animal.surrenderedAt) {
+                <p class="roster__surrender-date">
+                  <span class="roster__surrender-label">Surrendered:</span> {{ formatSurrenderedAt(item.animal.surrenderedAt) }}
+                </p>
+              }
               @if (item.reason) {
                 <p class="roster__match-reason">{{ item.reason }}</p>
               }
@@ -128,6 +133,20 @@ import type { RosterSearchErrorBody, RosterSearchResult } from './roster-search.
       gap: var(--space-2);
       min-height: 1.75rem;
       align-items: center;
+    }
+
+    .roster__surrender-date {
+      margin: var(--space-2) 0 0;
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: var(--color-ink);
+      opacity: 0.85;
+      letter-spacing: 0.02em;
+    }
+
+    .roster__surrender-label {
+      text-transform: uppercase;
+      font-weight: 700;
     }
 
     .roster__match-reason {
@@ -290,6 +309,16 @@ export class Roster {
   protected badgeStatus(animal: Animal): StatusBadgeStatus {
     if (this.adoptedStore.isAdopted(animal.id)) return 'celebration';
     return animal.available ? 'available' : 'pending';
+  }
+
+  protected formatSurrenderedAt(timestamp: string): string {
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return timestamp;
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
   }
 
   protected beginAdoption(animal: Animal): void {

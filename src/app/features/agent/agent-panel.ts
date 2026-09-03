@@ -3,13 +3,16 @@ import {
   DestroyRef,
   ElementRef,
   afterNextRender,
-  effect,
+  afterRenderEffect,
+  computed,
   inject,
   signal,
   viewChild,
 } from '@angular/core';
 import { Button } from '../../ui/button/button';
+import { SurfaceComponent } from '@a2ui/angular/v0_9';
 import { AgentRunnerService } from './agent-runner.service';
+import { HitlAuthorizationService, HITL_SURFACE_ID } from '../../webmcp/hitl-authorization.service';
 
 /**
  * The global WebMCP agent panel. Mounted in the app shell so it is available on every route; because
@@ -18,7 +21,7 @@ import { AgentRunnerService } from './agent-runner.service';
  */
 @Component({
   selector: 'app-agent-panel',
-  imports: [Button],
+  imports: [Button, SurfaceComponent],
   template: `
     <div class="dock" [style.top.px]="dockTop()">
       @if (open()) {
@@ -73,12 +76,34 @@ import { AgentRunnerService } from './agent-runner.service';
               </p>
             }
             @if (status() === 'running') {
-              <p class="msg msg--assistant msg--pending" aria-hidden="true">…</p>
+              @if (activeStreamingToolCalls().length === 0) {
+                <p class="msg msg--assistant msg--pending" aria-hidden="true">…</p>
+              }
+              @for (call of activeStreamingToolCalls(); track call.id) {
+                <div class="msg msg--tool msg--tool-streaming">
+                  🔧 streaming arguments for <code>{{ call.name }}</code>:
+                  <code class="msg__args">{{ call.args || '...' }}</code>
+                  <span class="streaming-dot" aria-hidden="true">▍</span>
+                </div>
+              }
             }
           </div>
 
+          @if (reasoning(); as r) {
+            <details class="panel__reasoning">
+              <summary class="reasoning-summary">🧠 Agent Thought Process ({{ r.length }} chars)</summary>
+              <pre class="reasoning-body">{{ r }}</pre>
+            </details>
+          }
+
           @if (error(); as err) {
             <p class="panel__error" role="alert">{{ err }}</p>
+          }
+
+          @if (hitl.pendingRequest()) {
+            <div class="panel__hitl">
+              <a2ui-v09-surface [surfaceId]="hitlSurfaceId" />
+            </div>
           }
 
           <form class="composer" (submit)="onSubmit($event)">
@@ -237,6 +262,47 @@ import { AgentRunnerService } from './agent-runner.service';
       opacity: 0.85;
     }
 
+    .msg--tool-streaming {
+      background: var(--color-muted);
+      border: 1px dashed var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: var(--space-1) var(--space-2);
+    }
+
+    .streaming-dot {
+      display: inline-block;
+      animation: blink 0.8s infinite;
+    }
+
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+    .panel__reasoning {
+      background: var(--color-bg-subtle, #f5f3ef);
+      border: var(--border-width) solid var(--border-color);
+      border-radius: var(--radius-sm);
+      padding: var(--space-2);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+    }
+
+    .reasoning-summary { cursor: pointer; font-weight: bold; }
+
+    .reasoning-body {
+      margin: var(--space-1) 0 0;
+      white-space: pre-wrap;
+      max-height: 8rem;
+      overflow-y: auto;
+      font-size: var(--text-xs);
+      color: var(--color-ink-muted, #555);
+    }
+
+    .panel__hitl {
+      margin: var(--space-2) 0;
+      border: 2px solid var(--color-status-critical);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+
     .msg__args {
       opacity: 0.75;
     }
@@ -294,11 +360,19 @@ import { AgentRunnerService } from './agent-runner.service';
 })
 export class AgentPanel {
   private readonly runner = inject(AgentRunnerService);
+  protected readonly hitl = inject(HitlAuthorizationService);
+  readonly hitlSurfaceId = HITL_SURFACE_ID;
   private readonly inputEl = viewChild<ElementRef<HTMLInputElement>>('inputEl');
 
   protected readonly transcript = this.runner.transcript;
   protected readonly status = this.runner.status;
   protected readonly error = this.runner.error;
+  protected readonly reasoning = this.runner.reasoning;
+  protected readonly activeStreamingToolCalls = computed(() =>
+    this.status() === 'running'
+      ? this.runner.toolCalls().filter((c) => c.status === 'pending')
+      : [],
+  );
 
   protected readonly open = signal(false);
   protected readonly draft = signal('');
@@ -313,8 +387,16 @@ export class AgentPanel {
 
   constructor() {
     // Move focus to the composer whenever the panel opens (keyboard + screen-reader friendly).
-    effect(() => {
-      if (this.open()) this.inputEl()?.nativeElement.focus();
+    // Using afterRenderEffect ensures the #inputEl has been rendered into the DOM (since it is inside @if (open())).
+    let wasOpen = false;
+    afterRenderEffect({
+      write: () => {
+        const isOpen = this.open();
+        if (isOpen && !wasOpen) {
+          this.inputEl()?.nativeElement.focus();
+        }
+        wasOpen = isOpen;
+      },
     });
 
     const destroyRef = inject(DestroyRef);

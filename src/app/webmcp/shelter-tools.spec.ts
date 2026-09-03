@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { AdmittedAnimalsStore } from '../data/admitted-animals-store';
+import { AdoptedAnimalsStore } from '../data/adopted-animals-store';
 import { MOCK_ANIMALS } from '../data/roster';
 import {
   admitAnimalTool,
@@ -38,6 +39,18 @@ describe('shelter WebMCP tools', () => {
       const clearedCount = MOCK_ANIMALS.filter((a) => a.available).length;
       expect(text.split('\n').length).toBe(clearedCount);
     });
+
+    it('excludes animals that have been adopted', () => {
+      // Find any cleared bear to adopt so we have a concrete target.
+      const bear = MOCK_ANIMALS.find((a) => a.available && a.species === 'Bear');
+      expect(bear).toBeDefined();
+
+      const store = TestBed.inject(AdoptedAnimalsStore);
+      store.adopt(bear!.id, 'Ankita');
+
+      const text = run(searchRosterTool, { criteria: 'bear' });
+      expect(text).not.toContain(bear!.name);
+    });
   });
 
   describe('getShelterStats', () => {
@@ -63,6 +76,17 @@ describe('shelter WebMCP tools', () => {
       const lines = text.split('\n').filter(Boolean);
       expect(lines.length).toBeGreaterThan(0);
       expect(lines.every((l) => l.includes('Bear'))).toBe(true);
+    });
+
+    it('excludes adopted animals from species filter results', () => {
+      const bear = MOCK_ANIMALS.find((a) => a.species === 'Bear');
+      expect(bear).toBeDefined();
+
+      const store = TestBed.inject(AdoptedAnimalsStore);
+      store.adopt(bear!.id, 'Ankita');
+
+      const text = run(filterRosterBySpeciesTool, { species: 'Bear' });
+      expect(text).not.toContain(bear!.name);
     });
   });
 

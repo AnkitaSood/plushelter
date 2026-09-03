@@ -142,7 +142,22 @@ export class ModelContextClient {
       const tools = mc.getTools ? await mc.getTools() : mc.tools ?? [];
       const tool = tools.find((t) => t.name === name);
       if (!tool) throw new Error(`Tool "${name}" is not registered on this page.`);
-      return extractText(await mc.executeTool(tool, JSON.stringify(args ?? {})));
+
+      try {
+        return extractText(await mc.executeTool(tool, JSON.stringify(args ?? {})));
+      } catch (e) {
+        // The tool context is re-registered whenever Angular's provideExperimentalWebMcpTools
+        // recreates its providers (e.g. on route navigation). The browser WebMCP surface fires
+        // an AbortSignal on the old context mid-call. Fetch a fresh tool reference and retry once
+        // — by the time we're in this catch block the new context is already stable.
+        if (e instanceof DOMException && e.name === 'AbortError') {
+          const freshTools = mc.getTools ? await mc.getTools() : mc.tools ?? [];
+          const freshTool = freshTools.find((t) => t.name === name);
+          if (!freshTool) throw new Error(`Tool "${name}" unavailable after context refresh.`);
+          return extractText(await mc.executeTool(freshTool, JSON.stringify(args ?? {})));
+        }
+        throw e;
+      }
     }
 
     const testing = getModelContextTesting();

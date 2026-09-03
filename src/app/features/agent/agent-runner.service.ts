@@ -1,15 +1,20 @@
-import { Service, inject, signal } from '@angular/core';
+import { Service, computed, inject, signal } from '@angular/core';
+import type { HttpAgent } from '@ag-ui/client';
+import {
+  EventType,
+  type ActivitySnapshotEvent,
+  type BaseEvent,
+  type RunErrorEvent,
+  type RunStartedEvent,
+  type StepFinishedEvent,
+  type StepStartedEvent,
+  type TextMessageContentEvent,
+  type TextMessageStartEvent,
+  type ToolCallArgsEvent,
+  type ToolCallEndEvent,
+  type ToolCallStartEvent,
+} from '@ag-ui/core';
 import { GeminiToolDecl, ModelContextClient } from '../../webmcp/model-context-client';
-
-/**
- * Drives the in-browser WebMCP agent loop:
- *   prompt → /api/agent (Gemini decides) → tool_call → run tool in the browser via WebMCP
- *          → result → /api/agent (Gemini narrates) → repeat until no more tool calls.
- *
- * The LLM turn is server-side (key stays safe); tool EXECUTION is client-side through
- * `ModelContextClient`, which is what makes this a real WebMCP demo (calls hit the DevTools panel).
- * State is exposed as signals so the panel can render a live, streaming transcript.
- */
 
 export type AgentEntry =
   | { kind: 'user'; id: number; text: string }
@@ -19,220 +24,329 @@ export type AgentEntry =
 
 export type AgentStatus = 'idle' | 'running' | 'error';
 
-/** One parsed event from the /api/agent SSE stream. */
-type AgentServerEvent =
-  | { type: 'token'; token: string }
-  | { type: 'tool_call'; id: string; name: string; arguments: Record<string, unknown>; interactionId?: string }
-  | { type: 'done' }
-  | { type: 'error'; code: string; message: string };
+export interface AgUiMessage {
+  id: string;
+  role: string;
+  content: string;
+}
 
-/** Ceiling on tool round-trips per prompt, so a misbehaving model can't loop forever. */
+export interface AgUiToolCall {
+  id: string;
+  name: string;
+  args: string;
+  status: 'pending' | 'executed';
+}
+
+export interface AgUiStep {
+  name: string;
+  status: 'running' | 'completed';
+}
+
 const MAX_STEPS = 6;
-
-function parseAgentSseRecord(raw: string): AgentServerEvent {
-  let eventType = 'message';
-  let dataLine = '';
-  for (const line of raw.split('\n')) {
-    if (line.startsWith('event:')) eventType = line.slice(6).trim();
-    else if (line.startsWith('data:')) dataLine += line.slice(5).trim();
-  }
-
-  if (eventType === 'done') return { type: 'done' };
-
-  let data: Record<string, unknown> = {};
-  if (dataLine) {
-    try {
-      data = JSON.parse(dataLine) as Record<string, unknown>;
-    } catch {
-      return { type: 'error', code: 'INVALID_SSE_EVENT', message: 'Malformed JSON in agent stream.' };
-    }
-  }
-
-  switch (eventType) {
-    case 'token':
-      return { type: 'token', token: String(data['token'] ?? '') };
-    case 'tool_call':
-      return {
-        type: 'tool_call',
-        id: String(data['id'] ?? ''),
-        name: String(data['name'] ?? ''),
-        arguments: (data['arguments'] as Record<string, unknown>) ?? {},
-        interactionId: data['interactionId'] as string | undefined,
-      };
-    case 'error':
-      return {
-        type: 'error',
-        code: String(data['code'] ?? 'UPSTREAM_ERROR'),
-        message: String(data['message'] ?? 'The agent hit an error.'),
-      };
-    default:
-      return { type: 'error', code: 'INVALID_SSE_EVENT', message: `Unsupported event "${eventType}".` };
-  }
-}
-
-interface AgentRequestBody {
-  message?: string;
-  toolResult?: { call_id: string; name: string; result: string };
-  previousInteractionId?: string;
-  tools: GeminiToolDecl[];
-}
 
 @Service()
 export class AgentRunnerService {
   private readonly mcp = inject(ModelContextClient);
+  private agent: HttpAgent | null = null;
+  private lastInteractionId?: string;
 
+  private async getAgent(): Promise<HttpAgent> {
+    if (!this.agent || (this.agent as any).abortController?.signal?.aborted) {
+      const { HttpAgent } = await import('@ag-ui/client');
+      this.agent = new HttpAgent({
+        url: '/api/agent?protocol=ag-ui',
+        headers: { 'x-ag-ui-protocol': 'true' },
+      });
+    } else {
+      (this.agent as any).abortController = new AbortController();
+    }
+    return this.agent;
+  }
+
+  // State signals exposed to UI
   private readonly _transcript = signal<AgentEntry[]>([]);
   private readonly _status = signal<AgentStatus>('idle');
   private readonly _error = signal<string | null>(null);
+  private readonly _currentRun = signal<{ runId: string; threadId: string } | null>(null);
+  private readonly _messages = signal<AgUiMessage[]>([]);
+  private readonly _activities = signal<ActivitySnapshotEvent[]>([]);
+  private readonly _sharedState = signal<Record<string, unknown>>({});
+  private readonly _reasoning = signal<string>('');
+  private readonly _steps = signal<AgUiStep[]>([]);
+  private readonly _toolCalls = signal<AgUiToolCall[]>([]);
 
   readonly transcript = this._transcript.asReadonly();
   readonly status = this._status.asReadonly();
   readonly error = this._error.asReadonly();
+  readonly isRunning = computed(() => this._status() === 'running');
+  readonly currentRun = this._currentRun.asReadonly();
+  readonly messages = this._messages.asReadonly();
+  readonly activities = this._activities.asReadonly();
+  readonly sharedState = this._sharedState.asReadonly();
+  readonly reasoning = this._reasoning.asReadonly();
+  readonly steps = this._steps.asReadonly();
+  readonly toolCalls = this._toolCalls.asReadonly();
 
   private nextId = 0;
-  private controller: AbortController | null = null;
 
-  /** Whether the page actually exposes a WebMCP surface (drives the panel's "live vs fallback" hint). */
   webMcpAvailable(): boolean {
     return this.mcp.isWebMcpAvailable();
   }
 
-  /** Cancel any in-flight run (NFR-7: a new prompt must abort the stale stream). */
+  private markToolCallExecuted(id: string): void {
+    this._toolCalls.update((calls) =>
+      calls.map((c) => (c.id === id ? { ...c, status: 'executed' } : c)),
+    );
+  }
+
   cancel(): void {
-    this.controller?.abort();
-    this.controller = null;
-    if (this._status() === 'running') this._status.set('idle');
+    this.agent?.abortRun();
+    this.agent = null;
+    this._toolCalls.update((calls) =>
+      calls.map((c) => (c.status === 'pending' ? { ...c, status: 'executed' } : c)),
+    );
+    if (this._status() === 'running') {
+      this._status.set('idle');
+      this._error.set('Run was cancelled by user.');
+    }
   }
 
   reset(): void {
     this.cancel();
+    this.lastInteractionId = undefined;
     this._transcript.set([]);
     this._error.set(null);
     this._status.set('idle');
+    this._currentRun.set(null);
+    this._messages.set([]);
+    this._activities.set([]);
+    this._sharedState.set({});
+    this._reasoning.set('');
+    this._steps.set([]);
+    this._toolCalls.set([]);
   }
 
-  /** Run the full agent loop for one user prompt. */
   async send(prompt: string): Promise<void> {
     const text = prompt.trim();
     if (!text || this._status() === 'running') return;
 
-    this.cancel();
-    const controller = new AbortController();
-    this.controller = controller;
     this._error.set(null);
     this._status.set('running');
-    this.append({ kind: 'user', id: this.nextId++, text });
+    this.appendTranscript({ kind: 'user', id: this.nextId++, text });
+    this._messages.update((msgs) => [...msgs, { id: `msg-${Date.now()}`, role: 'user', content: text }]);
 
     try {
       const tools = (await this.mcp.listTools()).map((t) => this.mcp.toGeminiTool(t));
-      let body: AgentRequestBody = { message: text, tools };
+      let turnInput: Record<string, unknown> = {
+        message: text,
+        tools,
+        protocol: 'ag-ui',
+        ...(this.lastInteractionId ? { previousInteractionId: this.lastInteractionId } : {}),
+      };
 
       for (let step = 0; step < MAX_STEPS; step++) {
-        const outcome = await this.streamTurn(body, controller.signal);
-        if (controller.signal.aborted) return;
+        const turnResult = await this.runTurn(turnInput);
+        if (this._status() !== 'running') return;
 
-        if (outcome.error) {
-          this._error.set(outcome.error);
+        if (turnResult.error) {
+          this._error.set(turnResult.error);
           this._status.set('error');
           return;
         }
 
-        if (!outcome.toolCall) {
-          this._status.set('idle'); // turn ended with no tool request — we're done
+        if (turnResult.interactionId) {
+          this.lastInteractionId = turnResult.interactionId;
+        }
+
+        if (!turnResult.pendingToolCall) {
+          this._status.set('idle');
           return;
         }
 
-        // Execute the requested tool IN THE BROWSER (logged by the WebMCP DevTools panel).
-        const { id, name, arguments: args, interactionId } = outcome.toolCall;
-        this.append({ kind: 'tool_call', id: this.nextId++, name, args });
+        // Execute browser tool
+        const { id, name, args, interactionId } = turnResult.pendingToolCall;
+        this.markToolCallExecuted(id);
+        this.appendTranscript({ kind: 'tool_call', id: this.nextId++, name, args });
         let result: string;
         try {
           result = await this.mcp.callTool(name, args);
         } catch (err) {
           result = `Tool "${name}" failed: ${err instanceof Error ? err.message : 'unknown error'}`;
         }
-        this.append({ kind: 'tool_result', id: this.nextId++, name, text: result });
+        this.appendTranscript({ kind: 'tool_result', id: this.nextId++, name, text: result });
 
-        body = { toolResult: { call_id: id, name, result }, previousInteractionId: interactionId, tools };
+        turnInput = {
+          toolResult: { call_id: id, name, result },
+          previousInteractionId: interactionId || this.lastInteractionId,
+          tools,
+          protocol: 'ag-ui',
+        };
       }
 
-      // Hit the step ceiling.
-      this._error.set('The agent took too many tool steps and stopped.');
+      this._toolCalls.update((calls) =>
+        calls.map((c) => (c.status === 'pending' ? { ...c, status: 'executed' } : c)),
+      );
+      this._error.set('The agent reached the maximum tool execution steps.');
       this._status.set('error');
     } catch (err) {
-      if (controller.signal.aborted) return;
-      this._error.set(err instanceof Error ? err.message : 'The agent hit an unexpected error.');
+      this._toolCalls.update((calls) =>
+        calls.map((c) => (c.status === 'pending' ? { ...c, status: 'executed' } : c)),
+      );
+      this._error.set(err instanceof Error ? err.message : 'An unexpected error occurred.');
       this._status.set('error');
     }
   }
 
-  /**
-   * Stream one /api/agent turn: appends streamed tokens to a live assistant entry and returns the
-   * turn's outcome (a pending tool call, or an error).
-   */
-  private async streamTurn(
-    body: AgentRequestBody,
-    signal: AbortSignal,
-  ): Promise<{ toolCall?: Extract<AgentServerEvent, { type: 'tool_call' }>; error?: string }> {
-    const response = await fetch('/api/agent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal,
-    });
+  private async runTurn(input: Record<string, unknown>): Promise<{
+    pendingToolCall?: { id: string; name: string; args: Record<string, unknown>; interactionId?: string };
+    error?: string;
+    interactionId?: string;
+  }> {
+    const agent = await this.getAgent();
+    return new Promise((resolve) => {
+      let activeAssistantId: number | null = null;
+      let activeMessageId: string | null = null;
+      let pendingToolCall: { id: string; name: string; args: Record<string, unknown>; interactionId?: string } | undefined;
+      let toolArgsBuffer = '';
+      let turnError: string | undefined;
+      let turnInteractionId: string | undefined;
 
-    if (!response.ok || !response.body) {
-      return { error: `Agent request failed with status ${response.status}` };
-    }
-
-    const assistantId = this.nextId++;
-    let assistantStarted = false;
-    let toolCall: Extract<AgentServerEvent, { type: 'tool_call' }> | undefined;
-
-    const handle = (raw: string): { error?: string } | undefined => {
-      const event = parseAgentSseRecord(raw);
-      switch (event.type) {
-        case 'token':
-          if (!assistantStarted) {
-            this.append({ kind: 'assistant', id: assistantId, text: '' });
-            assistantStarted = true;
+      const subscription = agent.run(input as any).subscribe({
+        next: (event: BaseEvent) => {
+          switch (event.type) {
+            case EventType.RUN_STARTED: {
+              const e = event as RunStartedEvent;
+              this._currentRun.set({ runId: e.runId, threadId: e.threadId });
+              break;
+            }
+            case EventType.TEXT_MESSAGE_START: {
+              const e = event as TextMessageStartEvent;
+              activeMessageId = e.messageId;
+              activeAssistantId = this.nextId++;
+              this.appendTranscript({ kind: 'assistant', id: activeAssistantId, text: '' });
+              this._messages.update((msgs) => [...msgs, { id: e.messageId, role: 'assistant', content: '' }]);
+              break;
+            }
+            case EventType.TEXT_MESSAGE_CONTENT: {
+              const e = event as TextMessageContentEvent;
+              if (activeAssistantId !== null) {
+                this.appendToken(activeAssistantId, e.delta);
+              }
+              if (activeMessageId !== null) {
+                this._messages.update((msgs) =>
+                  msgs.map((m) => (m.id === activeMessageId ? { ...m, content: m.content + e.delta } : m)),
+                );
+              }
+              break;
+            }
+            case EventType.TOOL_CALL_START: {
+              const e = event as ToolCallStartEvent;
+              toolArgsBuffer = '';
+              const iid = (e as any).interactionId || (e as any).metadata?.interactionId;
+              if (iid) {
+                turnInteractionId = iid;
+              }
+              pendingToolCall = {
+                id: e.toolCallId,
+                name: e.toolCallName,
+                args: {},
+                interactionId: iid,
+              };
+              this._toolCalls.update((calls) => [
+                ...calls,
+                { id: e.toolCallId, name: e.toolCallName, args: '', status: 'pending' },
+              ]);
+              break;
+            }
+            case EventType.TOOL_CALL_ARGS: {
+              const e = event as ToolCallArgsEvent;
+              toolArgsBuffer += e.delta;
+              this._toolCalls.update((calls) =>
+                calls.map((c) => (c.id === e.toolCallId ? { ...c, args: c.args + e.delta } : c)),
+              );
+              break;
+            }
+            case EventType.TOOL_CALL_END: {
+              const e = event as ToolCallEndEvent;
+              if (pendingToolCall) {
+                try {
+                  pendingToolCall.args = JSON.parse(toolArgsBuffer || '{}');
+                } catch {
+                  pendingToolCall.args = {};
+                }
+              }
+              const callId = e.toolCallId || pendingToolCall?.id;
+              if (callId) {
+                this.markToolCallExecuted(callId);
+              }
+              const iid = (e as any).interactionId || (e as any).metadata?.interactionId;
+              if (iid) {
+                turnInteractionId = iid;
+              }
+              break;
+            }
+            case EventType.ACTIVITY_SNAPSHOT: {
+              const e = event as ActivitySnapshotEvent;
+              this._activities.update((acts) => [...acts, e]);
+              break;
+            }
+            case EventType.STEP_STARTED: {
+              const e = event as StepStartedEvent;
+              this._steps.update((s) => [...s, { name: e.stepName, status: 'running' }]);
+              break;
+            }
+            case EventType.STEP_FINISHED: {
+              const e = event as StepFinishedEvent;
+              this._steps.update((s) =>
+                s.map((step) => (step.name === e.stepName ? { ...step, status: 'completed' } : step)),
+              );
+              break;
+            }
+            case EventType.REASONING_MESSAGE_CONTENT:
+            case EventType.THINKING_TEXT_MESSAGE_CONTENT: {
+              const e = event as any;
+              this._reasoning.update((r) => r + (e.delta ?? ''));
+              break;
+            }
+            case EventType.RUN_FINISHED: {
+              const e = event as any;
+              const iid =
+                e.result?.interactionId ||
+                e.metadata?.interactionId ||
+                e.interactionId;
+              if (iid) {
+                turnInteractionId = iid;
+              }
+              break;
+            }
+            case EventType.RUN_ERROR: {
+              const e = event as RunErrorEvent;
+              turnError = e.message;
+              break;
+            }
           }
-          this.appendToken(assistantId, event.token);
-          return undefined;
-        case 'tool_call':
-          toolCall = event;
-          return undefined;
-        case 'error':
-          return { error: event.message };
-        case 'done':
-          return undefined;
-      }
-    };
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let sep: number;
-      while ((sep = buffer.indexOf('\n\n')) !== -1) {
-        const rawEvent = buffer.slice(0, sep);
-        buffer = buffer.slice(sep + 2);
-        const res = handle(rawEvent);
-        if (res?.error) return { error: res.error };
-      }
-    }
-    if (buffer.trim()) {
-      const res = handle(buffer);
-      if (res?.error) return { error: res.error };
-    }
-
-    return { toolCall };
+        },
+        error: (err: unknown) => {
+          if (pendingToolCall) {
+            this.markToolCallExecuted(pendingToolCall.id);
+          }
+          resolve({ error: err instanceof Error ? err.message : 'Transport stream error' });
+        },
+        complete: () => {
+          if (pendingToolCall) {
+            this.markToolCallExecuted(pendingToolCall.id);
+          }
+          resolve({
+            pendingToolCall,
+            error: turnError,
+            interactionId: turnInteractionId || pendingToolCall?.interactionId,
+          });
+        },
+      });
+    });
   }
 
-  private append(entry: AgentEntry): void {
+  private appendTranscript(entry: AgentEntry): void {
     this._transcript.update((list) => [...list, entry]);
   }
 

@@ -1,4 +1,4 @@
-import { Component, computed, debounced, effect, inject, signal } from '@angular/core';
+import { Component, computed, debounced, inject, linkedSignal, signal } from '@angular/core';
 import { HttpClient, httpResource } from '@angular/common/http';
 import { Dialog } from '@angular/cdk/dialog';
 import { form, required, submit } from '@angular/forms/signals';
@@ -28,6 +28,7 @@ export function surrenderToPhotosPendingAnimal(request: SurrenderRequest): Anima
     photoUrl: PHOTOS_PENDING_PLACEHOLDER,
     available: false,
     photosPending: true,
+    surrenderedAt: new Date().toISOString(),
   };
 }
 
@@ -135,23 +136,11 @@ export class SurrenderFlow {
   private readonly requestsStore = inject(SurrenderRequestsStore);
   private readonly notifications = inject(NotificationService);
 
-  protected readonly speciesOptions = [...new Set(MOCK_ANIMALS.map((a) => a.species))].sort();
+  protected readonly speciesOptions = [...new Set([...MOCK_ANIMALS.map((a) => a.species), 'Other'])].sort();
 
   private readonly model = signal<SurrenderRequest>({ ...EMPTY_SURRENDER_REQUEST });
   private readonly submitAttempted = signal(false);
-  private readonly latestAssessment = signal<{ reason: string; analysis: GuiltAnalysis } | undefined>(undefined);
   private readonly assessmentSubmissionError = signal<{ reason: string; message: string } | undefined>(undefined);
-
-  constructor() {
-    effect(() => {
-      const analysis = this.surrenderRiskResource.value();
-      const reason = (this.debouncedReason.value() ?? '').trim();
-      if (analysis && reason) {
-        this.latestAssessment.set({ reason, analysis });
-      }
-
-    });
-  }
 
   /** A plain Signal Form. Passing `experimentalWebMcpTool` derives a WebMCP tool
    * (`submitSurrenderRequest`) from the model + validators — form-scoped, so the tool lives exactly
@@ -221,6 +210,22 @@ export class SurrenderFlow {
     const text = (this.debouncedReason.value() ?? '').trim();
     if (!text) return undefined;
     return { url: '/api/surrender-analysis', method: 'POST', body: { submittedText: text } };
+  });
+ 
+  private readonly latestAssessment = linkedSignal<
+    { analysis: GuiltAnalysis | undefined; reason: string },
+    { reason: string; analysis: GuiltAnalysis } | undefined
+  >({
+    source: () => ({
+      analysis: this.surrenderRiskResource.value(),
+      reason: (this.debouncedReason.value() ?? '').trim(),
+    }),
+    computation: (source, previous) => {
+      if (source.analysis && source.reason) {
+        return { reason: source.reason, analysis: source.analysis };
+      }
+      return previous?.value;
+    },
   });
 
   protected readonly surrenderRiskDisplay = computed(() => {

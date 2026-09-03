@@ -48,6 +48,7 @@ export function caseFileToUnderRepairAnimal(fields: {
     photoUrl: UNDER_REPAIR_PLACEHOLDER,
     available: false,
     underRepair: true,
+    surrenderedAt: new Date().toISOString(),
   };
 }
 

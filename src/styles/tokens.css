@@ -52,4 +52,22 @@
 
   --focus-ring-color: var(--color-primary);
   --focus-ring-width: 3px;
+
+  /*
+   * A2UI token bridge — pins the library's light-dark() defaults to our
+   * concrete design-system values. The A2UI BasicCatalog injects
+   * `color-scheme: light dark` via :where(:root), which causes
+   * `--a2ui-color-on-background: light-dark(#333, #eee)` to resolve to #eee
+   * when the OS is in dark mode — near-invisible on our #fffffc background.
+   * Our :root rules have higher specificity than :where(:root), so these
+   * overrides win without needing !important.
+   */
+  --a2ui-color-background: var(--color-bg);        /* #fffffc — Form White */
+  --a2ui-color-on-background: var(--color-ink);    /* #4a3f35 — Warm Stamp Brown */
+  --a2ui-color-on-surface: var(--color-ink);       /* #4a3f35 */
+  --a2ui-color-on-secondary: var(--color-ink);     /* #4a3f35 */
+  --a2ui-color-on-input: var(--color-ink);         /* #4a3f35 */
+  --a2ui-color-border: var(--border-color);        /* #4a3f35 */
+  --a2ui-color-primary: var(--color-primary);      /* #a0c4ff — Intake Periwinkle */
+  --a2ui-color-on-primary: var(--color-ink);       /* #4a3f35 */
 }

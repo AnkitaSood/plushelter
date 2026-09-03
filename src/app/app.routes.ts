@@ -31,6 +31,16 @@ export const routes: Routes = [
       //   loadComponent: () => import('./features/agent-console/agent-console').then((m) => m.AgentConsole),
       // },
       {
+        path: 'surrender-risk',
+        loadComponent: () =>
+          import('./features/surrender-risk/surrender-risk').then((m) => m.SurrenderRiskReport),
+      },
+      {
+        path: 'match-wizard',
+        loadComponent: () =>
+          import('./features/match-wizard/match-wizard').then((m) => m.AdaptiveMatchWizard),
+      },
+      {
         path: '',
         providers: [provideEnvironmentInitializer(() => void inject(ShelterAgentService))],
         loadComponent: () => import('./features/intake-triage/intake-triage').then((m) => m.IntakeTriage),

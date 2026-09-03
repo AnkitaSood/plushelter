@@ -2,6 +2,7 @@ import { inject, type WebMcpToolDescriptor } from '@angular/core';
 import { MOCK_ANIMALS, UNDER_REPAIR_PLACEHOLDER, type Animal } from '../data/roster';
 import { AdmittedAnimalsStore } from '../data/admitted-animals-store';
 import { AdoptedAnimalsStore } from '../data/adopted-animals-store';
+import { HitlAuthorizationService } from './hitl-authorization.service';
 
 /**
  * WebMCP tool definitions for the shelter, defined ONCE and shared two ways:
@@ -30,7 +31,7 @@ function describe(a: Animal): string {
 export const searchRosterTool: ShelterTool = {
   name: 'searchRoster',
   description:
-    "Search the shelter's cleared-for-placement roster by free-text criteria (species, " +
+    "Search the shelter's cleared-for-placement, not-yet-adopted roster by free-text criteria (species, " +
     'temperament, condition, or keywords from an animal\'s backstory).',
   inputSchema: {
     type: 'object',
@@ -40,7 +41,10 @@ export const searchRosterTool: ShelterTool = {
   },
   execute: (args) => {
     const criteria = String((args as { criteria?: unknown })?.criteria ?? '').toLowerCase().trim();
-    const all = [...MOCK_ANIMALS, ...inject(AdmittedAnimalsStore).admitted()].filter((a) => a.available);
+    const adoptedIds = new Set(inject(AdoptedAnimalsStore).adoptions().map((r) => r.animalId));
+    const all = [...MOCK_ANIMALS, ...inject(AdmittedAnimalsStore).admitted()].filter(
+      (a) => a.available && !adoptedIds.has(a.id),
+    );
     const matches = criteria
       ? all.filter((a) => `${a.name} ${a.species} ${a.condition} ${a.backstory}`.toLowerCase().includes(criteria))
       : all;
@@ -77,8 +81,9 @@ export const filterRosterBySpeciesTool: ShelterTool = {
   },
   execute: (args) => {
     const species = String((args as { species?: unknown })?.species ?? '').toLowerCase().trim();
+    const adoptedIds = new Set(inject(AdoptedAnimalsStore).adoptions().map((r) => r.animalId));
     const matches = [...MOCK_ANIMALS, ...inject(AdmittedAnimalsStore).admitted()].filter(
-      (a) => a.species.toLowerCase() === species,
+      (a) => a.species.toLowerCase() === species && !adoptedIds.has(a.id),
     );
     return text(matches.length ? matches.map(describe).join('\n') : `No animals on file of species "${species}".`);
   },
@@ -111,15 +116,59 @@ export const admitAnimalTool: ShelterTool = {
       photoUrl: UNDER_REPAIR_PLACEHOLDER,
       available: false,
       underRepair: true,
+      surrenderedAt: new Date().toISOString(),
     };
     inject(AdmittedAnimalsStore).admit(animal);
     return text(`Admitted ${animal.name} (${animal.species}) to the roster as under repair.`);
   },
 };
 
+/** HITL TOOL: Performs an invasive clinical rehabilitation procedure requiring human clearance. */
+export const performCriticalMedicalProcedureTool: ShelterTool = {
+  name: 'performCriticalMedicalProcedure',
+  description:
+    'Authorize and execute an invasive clinical rehabilitation procedure on a stuffed animal (e.g. Total Fluff Replacement, Micro-Suture Eye Re-anchoring). Requires human authorization before execution.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      animalId: { type: 'string', description: 'ID of the animal being treated.' },
+      procedureName: { type: 'string', description: 'Clinical name of the procedure.' },
+      estimatedStuffingLoss: { type: 'string', description: 'Anticipated loss of internal batting (e.g. "15% polyfill").' },
+      riskLevel: { type: 'string', description: 'Assessed risk: "moderate" or "critical".' },
+    },
+    required: ['animalId', 'procedureName'],
+    additionalProperties: false,
+  },
+  execute: async (args) => {
+    const a = args as { animalId?: unknown; procedureName?: unknown; estimatedStuffingLoss?: unknown; riskLevel?: unknown };
+    const animalId = String(a?.animalId ?? '001');
+    const procedureName = String(a?.procedureName ?? 'Total Fluff Replacement');
+    const loss = String(a?.estimatedStuffingLoss ?? '15% polyfill');
+    const risk = String(a?.riskLevel ?? 'critical');
+
+    const hitl = inject(HitlAuthorizationService);
+    const decision = await hitl.requestAuthorization({
+      animalId,
+      procedureName,
+      estimatedStuffingLoss: loss,
+      riskLevel: risk,
+    });
+
+    if (!decision.approved) {
+      return text(`PROCEDURE DENIED BY HUMAN CLINICAL DIRECTOR: "${procedureName}" was rejected. Pivoting to conservative therapy.`);
+    }
+
+    return text(`PROCEDURE AUTHORIZED AND COMPLETED: "${procedureName}" successfully performed on patient #${animalId}. Post-op stuffing levels stabilized.`);
+  },
+};
+
 /** Tools registered via `provideExperimentalWebMcpTools` on the app-tools parent route in
  * app.routes.ts — every route except /faq inherits these. */
-export const APP_TOOLS: ShelterTool[] = [searchRosterTool, shelterStatsTool];
+export const APP_TOOLS: ShelterTool[] = [
+  searchRosterTool,
+  shelterStatsTool,
+  performCriticalMedicalProcedureTool,
+];
 
 /** Tools registered only on the /roster route (with auto-cleanup on navigation away). */
 export const ROSTER_ROUTE_TOOLS: ShelterTool[] = [filterRosterBySpeciesTool];
@@ -130,15 +179,10 @@ export interface RegisteredTool {
   tool: ShelterTool;
 }
 
-/**
- * The inventory the Agent Console renders + invokes. This mirrors (does not replace) the real
- * WebMCP registrations; it's what makes the tools visible and clickable on the projector.
- * `admitAnimalTool`'s "Service" scope is now provided from intake triage's route providers
- * (see app.routes.ts), not the app root — see `ShelterAgentService`'s doc comment.
- */
 export const SHELTER_TOOL_REGISTRY: RegisteredTool[] = [
   { scope: 'Application', tool: searchRosterTool },
   { scope: 'Application', tool: shelterStatsTool },
+  { scope: 'Application', tool: performCriticalMedicalProcedureTool },
   { scope: 'Route · /roster', tool: filterRosterBySpeciesTool },
   { scope: 'Service', tool: admitAnimalTool },
 ];

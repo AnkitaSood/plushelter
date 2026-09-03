@@ -38,12 +38,14 @@
         "npm:ag-charts-angular@^14.1.0",
         "npm:istanbul-lib-instrument@^6.0.3",
         "npm:jsdom@^29.1.1",
+        "npm:netlify-cli@^27.4.2",
         "npm:ollama@~0.6.3",
         "npm:puppeteer@^25.3.0",
         "npm:rxjs@7.8",
         "npm:tslib@^2.3.0",
         "npm:typescript@~6.0.3",
-        "npm:vitest@^4.0.8"
+        "npm:vitest@^4.0.8",
+        "npm:zod@^4.5.4"
       ]
     }
   }

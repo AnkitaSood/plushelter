@@ -15,6 +15,8 @@ describe('caseFileToUnderRepairAnimal', () => {
     expect(animal.available).toBe(false);
     expect(animal.photoUrl).toBe(UNDER_REPAIR_PLACEHOLDER);
     expect(animal.backstory).toBe('');
+    expect(typeof animal.surrenderedAt).toBe('string');
+    expect(Number.isNaN(Date.parse(animal.surrenderedAt!))).toBe(false);
   });
 
   it('mints a non-empty, unique id per call', () => {

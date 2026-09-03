@@ -15,6 +15,7 @@ const UNDER_REPAIR_ANIMAL: Animal = {
   photoUrl: '/images/under-repair.svg',
   available: false,
   underRepair: true,
+  surrenderedAt: '2024-03-15T12:00:00.000Z',
 };
 
 describe('Roster', () => {
@@ -31,6 +32,7 @@ describe('Roster', () => {
       filteredAnimals: () => Animal[];
       speciesOptions: () => string[];
       statusLabel: (animal: Animal) => string;
+      formatSurrenderedAt: (timestamp: string) => string;
     };
   }
 
@@ -96,5 +98,12 @@ describe('Roster', () => {
     expect(component.statusLabel({ ...UNDER_REPAIR_ANIMAL, available: true, underRepair: false })).toBe(
       'Cleared for placement',
     );
+  });
+
+  it('formats surrender timestamp into readable date', async () => {
+    const component = await setup();
+    const formatted = component.formatSurrenderedAt('2024-03-15T12:00:00.000Z');
+    expect(formatted).toContain('2024');
+    expect(formatted).toContain('Mar');
   });
 });

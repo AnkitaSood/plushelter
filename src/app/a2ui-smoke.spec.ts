@@ -1,6 +1,7 @@
 import { Component, provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { provideA2Ui, provideMarkdownRenderer, A2uiRendererService, BasicCatalog, SurfaceComponent } from '@a2ui/angular/v0_9';
+import { provideA2Ui, A2uiRendererService, BasicCatalog, SurfaceComponent } from '@a2ui/angular/v0_9';
+import { provideShelterMarkdownRenderer } from './a2ui/shelter-catalog';
 import type { A2uiMessage } from '@a2ui/web_core/v0_9';
 
 describe('A2UI Renderer Smoke Test (Angular 22 Compatibility)', () => {
@@ -15,7 +16,7 @@ describe('A2UI Renderer Smoke Test (Angular 22 Compatibility)', () => {
       imports: [SurfaceComponent],
       providers: [
         provideZonelessChangeDetection(),
-        provideMarkdownRenderer(),
+        provideShelterMarkdownRenderer(),
         provideA2Ui(() => ({
           catalogs: [new BasicCatalog()],
         })),

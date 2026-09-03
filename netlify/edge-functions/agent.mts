@@ -1,47 +1,96 @@
 import { isDemoMode, simulateTokenDelay, DEMO_RESPONSES } from '../shared/demo-mode.mts';
+import { AgUiEventType, formatAgUiSse, formatLegacySse } from '../shared/ag-ui.ts';
+import { validateA2uiMessages } from '../shared/a2ui-validator.ts';
 
 /**
- * /api/agent — the streaming "planner" for the in-browser WebMCP agent.
+ * /api/agent — the streaming agent planner for Plushelter.
  *
- * Unlike /api/chat (which declares ONE fixed tool and RUNS it server-side), this endpoint is a pure
- * planner for tools that live in the browser. The browser sends the tool declarations it read from
- * `navigator.modelContext` for the current route; we run one Gemini turn; and when the model asks to
- * call a tool we emit a `tool_call` event and STOP — the browser executes the tool (so the WebMCP
- * DevTools "Tool Activity" panel logs it) and calls us back with the result to continue the loop.
+ * Supports both:
+ * 1. Standard AG-UI Protocol (v0.0.59) when requested via `x-ag-ui-protocol` header,
+ *    `?protocol=ag-ui` parameter, or `{ protocol: 'ag-ui' }` in body.
+ * 2. Legacy 4-event contract for backward compatibility during phased transition.
  *
- * SSE contract (stable regardless of Gemini's own event shape — specs.md §5 / AC-2.3):
- *   event: token      data: { token }                              — assistant text delta
- *   event: tool_call  data: { id, name, arguments, interactionId } — browser must run this tool
- *   event: done       data: {}                                     — turn finished, no tool wanted
- *   event: error      data: { code, message }
+ * AG-UI Events emitted:
+ *   RUN_STARTED          — immediately on connection with runId & threadId
+ *   TEXT_MESSAGE_START   — when text generation begins
+ *   TEXT_MESSAGE_CONTENT — streamed text deltas
+ *   TEXT_MESSAGE_END     — when text turn completes
+ *   TOOL_CALL_START      — browser WebMCP tool call requested
+ *   TOOL_CALL_ARGS       — tool call arguments
+ *   TOOL_CALL_END        — tool call arguments complete (browser executes & calls back)
+ *   ACTIVITY_SNAPSHOT    — agent-composed A2UI v0.9 surfaces (validated server-side)
+ *   RUN_FINISHED         — turn execution successfully finished
+ *   RUN_ERROR            — rate-limit or upstream error
  */
 
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/interactions';
 const GEMINI_API_REVISION = '2026-05-20';
 
-/** Default demo model is gemini-3.1-flash-lite (matches every other function). Override via
- * GEMINI_TEST_MODEL in .env.local without touching this file. */
 function resolveModel(): string {
   return Netlify.env.get('GEMINI_TEST_MODEL') || 'gemini-3.1-flash-lite';
 }
 
-const SYSTEM_INSTRUCTION =
-  'You are the in-browser agent for Plushelter, a stuffed-animal shelter app. You can call the ' +
-  'page tools provided to you to answer the user. When the user asks something a tool can answer ' +
-  '(searching or filtering the roster, shelter stats, admitting an animal, submitting a surrender), ' +
-  'call the most appropriate tool, then summarise its result in a short, friendly reply. Only call ' +
-  'tools that are provided this turn. For small talk or anything no tool covers, just reply in text.';
+const SYSTEM_INSTRUCTION = `You are the in-browser agent for Plushelter, a stuffed-animal shelter app.
+Your personality is warm, bureaucratic, and dead-serious about stuffed animal welfare.
+
+You can call page tools provided to you to answer the user:
+- searching or filtering the roster
+- shelter stats & FAQ lookup
+- admitting an animal
+- submitting a surrender assessment
+
+When answering questions about animals or comparisons, you may compose generative A2UI v0.9 surfaces.
+To compose an A2UI surface, enclose a JSON array of A2uiMessages inside an \`\`\`a2ui ... \`\`\` code block.
+
+A2UI v0.9 Basic Catalog components include:
+- "Text": properties: { "text": string | { "path": string }, "variant": "h1"|"h2"|"h3"|"body"|"caption" }
+- "Row" & "Column": properties: { "children": string[] } (array of child component IDs)
+- "Card": properties: { "children": string[] }
+- "Button": properties: { "child": string, "action"?: { "event": { "name": string, "context"?: object } } }
+- "TextField": properties: { "label": string, "value": { "path": string } }
+- "CheckBox": properties: { "label": string, "checked": { "path": string } }
+
+Example A2UI block for a matched resident:
+\`\`\`a2ui
+[
+  {
+    "version": "v0.9",
+    "createSurface": {
+      "surfaceId": "srf-match",
+      "catalogId": "https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json"
+    }
+  },
+  {
+    "version": "v0.9",
+    "updateComponents": {
+      "surfaceId": "srf-match",
+      "components": [
+        { "id": "root", "component": "Card", "children": ["title", "desc", "adopt-btn"] },
+        { "id": "title", "component": "Text", "variant": "h2", "text": { "path": "/name" } },
+        { "id": "desc", "component": "Text", "variant": "body", "text": { "path": "/bio" } },
+        { "id": "adopt-btn", "component": "Button", "child": "adopt-btn-text", "action": { "event": { "name": "start_adoption", "context": { "animalId": "001" } } } },
+        { "id": "adopt-btn-text", "component": "Text", "text": "Apply to Adopt" }
+      ]
+    }
+  },
+  {
+    "version": "v0.9",
+    "updateDataModel": {
+      "surfaceId": "srf-match",
+      "path": "/",
+      "value": { "name": "Horace the Bear", "bio": "Rehabilitated companion. Low-maintenance and calm." }
+    }
+  }
+]
+\`\`\`
+
+Rules:
+- Never make up animal details — use tool search results.
+- Keep text replies concise, official, and warm.
+- Ground every fact in tool results.`;
 
 class RateLimitedError extends Error {}
 
-const encoder = new TextEncoder();
-
-/** Encodes a backend SSE event as bytes — controller.enqueue() requires Uint8Array, not a string. */
-function sseEvent(event: string, data: unknown): Uint8Array {
-  return encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-}
-
-/** A Gemini function-tool declaration, as translated by the browser from a WebMCP descriptor. */
 interface GeminiToolDecl {
   type: 'function';
   name: string;
@@ -52,7 +101,6 @@ interface GeminiToolDecl {
 interface ToolResultInput {
   call_id: string;
   name: string;
-  /** The MCP text content the browser's tool returned. */
   result: string;
 }
 
@@ -61,6 +109,9 @@ interface AgentRequestBody {
   toolResult?: ToolResultInput;
   previousInteractionId?: string;
   tools?: GeminiToolDecl[];
+  protocol?: 'ag-ui' | 'legacy';
+  threadId?: string;
+  runId?: string;
 }
 
 interface SseRecord {
@@ -68,7 +119,6 @@ interface SseRecord {
   data: any;
 }
 
-/** Parses a Gemini Interactions API SSE body into discrete {event, data} records. */
 async function* parseSseStream(body: ReadableStream<Uint8Array>): AsyncGenerator<SseRecord> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -102,14 +152,10 @@ interface PendingFunctionCall {
   arguments: Record<string, unknown>;
 }
 
-/**
- * Streams one Gemini turn, forwarding text deltas as our own `token` events.
- * Returns the interaction id (for chaining the next turn) and any function call the model requested.
- */
 async function streamGeminiTurn(
-  controller: ReadableStreamDefaultController,
   apiKey: string,
   payload: Record<string, unknown>,
+  onToken: (token: string) => void,
 ): Promise<{ interactionId: string | undefined; functionCall: PendingFunctionCall | undefined }> {
   const response = await fetch(GEMINI_API_URL, {
     method: 'POST',
@@ -141,7 +187,7 @@ async function streamGeminiTurn(
         arguments: data.step.arguments ?? {},
       };
     } else if (event === 'step.delta' && data.delta?.type === 'text') {
-      controller.enqueue(sseEvent('token', { token: data.delta.text }));
+      onToken(data.delta.text);
     } else if (event === 'interaction.completed') {
       interactionId = data.interaction?.id;
     }
@@ -150,34 +196,236 @@ async function streamGeminiTurn(
   return { interactionId, functionCall };
 }
 
-/** Canned two-phase loop for DEMO_MODE: first call asks for a tool, the callback narrates. */
-async function streamDemoTurn(
+/** Demo stream for AG-UI format */
+async function streamAgUiDemo(
+  controller: ReadableStreamDefaultController,
+  isToolResultTurn: boolean,
+  threadId: string,
+  runId: string,
+  userPrompt: string,
+): Promise<void> {
+  controller.enqueue(
+    formatAgUiSse({
+      type: AgUiEventType.RUN_STARTED,
+      runId,
+      threadId,
+    }),
+  );
+
+  const isA2UiQuery =
+    /card|adopt|horace|match|compare|surface/i.test(userPrompt) && !isToolResultTurn;
+
+  if (isA2UiQuery) {
+    const fixture = DEMO_RESPONSES.agUiFixtures.a2uiSurfaceFlow;
+    const msgId = fixture.messageId;
+
+    controller.enqueue(
+      formatAgUiSse({
+        type: AgUiEventType.TEXT_MESSAGE_START,
+        messageId: msgId,
+        role: 'assistant',
+      }),
+    );
+
+    const words = fixture.introText.split(' ');
+    for (const w of words) {
+      controller.enqueue(
+        formatAgUiSse({
+          type: AgUiEventType.TEXT_MESSAGE_CONTENT,
+          messageId: msgId,
+          delta: w + ' ',
+        }),
+      );
+      await simulateTokenDelay(30);
+    }
+
+    controller.enqueue(
+      formatAgUiSse({
+        type: AgUiEventType.TEXT_MESSAGE_END,
+        messageId: msgId,
+      }),
+    );
+
+    // Validate and emit A2UI surface activity
+    const validation = validateA2uiMessages(fixture.a2uiMessages);
+    if (validation.valid) {
+      controller.enqueue(
+        formatAgUiSse({
+          type: AgUiEventType.ACTIVITY_SNAPSHOT,
+          messageId: `act-${msgId}`,
+          activityType: 'a2ui-surface',
+          content: {
+            messages: fixture.a2uiMessages,
+          },
+        }),
+      );
+    }
+
+    controller.enqueue(
+      formatAgUiSse({
+        type: AgUiEventType.RUN_FINISHED,
+        runId,
+        threadId,
+        result: { interactionId: 'demo-interaction-a2ui' },
+        metadata: { interactionId: 'demo-interaction-a2ui' },
+      }),
+    );
+    return;
+  }
+
+  const fixture = DEMO_RESPONSES.agUiFixtures.toolCallFlow;
+  const msgId = `msg-${Date.now()}`;
+
+  if (isToolResultTurn) {
+    controller.enqueue(
+      formatAgUiSse({
+        type: AgUiEventType.TEXT_MESSAGE_START,
+        messageId: msgId,
+        role: 'assistant',
+      }),
+    );
+
+    const words = fixture.narrationText.split(' ');
+    for (const w of words) {
+      controller.enqueue(
+        formatAgUiSse({
+          type: AgUiEventType.TEXT_MESSAGE_CONTENT,
+          messageId: msgId,
+          delta: w + ' ',
+        }),
+      );
+      await simulateTokenDelay(40);
+    }
+
+    controller.enqueue(
+      formatAgUiSse({
+        type: AgUiEventType.TEXT_MESSAGE_END,
+        messageId: msgId,
+      }),
+    );
+
+    controller.enqueue(
+      formatAgUiSse({
+        type: AgUiEventType.RUN_FINISHED,
+        runId,
+        threadId,
+        result: { interactionId: 'demo-interaction-narration' },
+        metadata: { interactionId: 'demo-interaction-narration' },
+      }),
+    );
+    return;
+  }
+
+  // Tool plan phase
+  controller.enqueue(
+    formatAgUiSse({
+      type: AgUiEventType.TEXT_MESSAGE_START,
+      messageId: msgId,
+      role: 'assistant',
+    }),
+  );
+
+  controller.enqueue(
+    formatAgUiSse({
+      type: AgUiEventType.TEXT_MESSAGE_CONTENT,
+      messageId: msgId,
+      delta: fixture.planText,
+    }),
+  );
+
+  controller.enqueue(
+    formatAgUiSse({
+      type: AgUiEventType.TEXT_MESSAGE_END,
+      messageId: msgId,
+    }),
+  );
+
+  const tc = fixture.toolCall;
+  controller.enqueue(
+    formatAgUiSse({
+      type: AgUiEventType.TOOL_CALL_START,
+      toolCallId: tc.id,
+      toolCallName: tc.name,
+      interactionId: tc.interactionId,
+    }),
+  );
+
+  controller.enqueue(
+    formatAgUiSse({
+      type: AgUiEventType.TOOL_CALL_ARGS,
+      toolCallId: tc.id,
+      delta: JSON.stringify(tc.args),
+    }),
+  );
+
+  controller.enqueue(
+    formatAgUiSse({
+      type: AgUiEventType.TOOL_CALL_END,
+      toolCallId: tc.id,
+      interactionId: tc.interactionId,
+    }),
+  );
+
+  controller.enqueue(
+    formatAgUiSse({
+      type: AgUiEventType.RUN_FINISHED,
+      runId,
+      threadId,
+      result: { interactionId: tc.interactionId },
+      metadata: { interactionId: tc.interactionId },
+    }),
+  );
+}
+
+/** Demo stream for legacy 4-event format */
+async function streamLegacyDemo(
   controller: ReadableStreamDefaultController,
   isToolResultTurn: boolean,
 ): Promise<void> {
   const demo = DEMO_RESPONSES.webmcpAgent;
   if (isToolResultTurn) {
     for (const token of demo.narrationTokens) {
-      controller.enqueue(sseEvent('token', { token }));
+      controller.enqueue(formatLegacySse('token', { token }));
       await simulateTokenDelay(50);
     }
-    controller.enqueue(sseEvent('done', {}));
+    controller.enqueue(formatLegacySse('done', {}));
     return;
   }
 
   for (const token of demo.planTokens) {
-    controller.enqueue(sseEvent('token', { token }));
+    controller.enqueue(formatLegacySse('token', { token }));
     await simulateTokenDelay(50);
   }
   controller.enqueue(
-    sseEvent('tool_call', {
+    formatLegacySse('tool_call', {
       id: demo.toolCall.id,
       name: demo.toolCall.name,
       arguments: demo.toolCall.arguments,
       interactionId: demo.interactionId,
     }),
   );
-  controller.enqueue(sseEvent('done', {}));
+  controller.enqueue(formatLegacySse('done', {}));
+}
+
+/** Extracts embedded A2UI code fences from assistant response text */
+function extractA2uiBlocks(text: string): { cleanText: string; a2uiBlocks: unknown[][] } {
+  const a2uiRegex = /```a2ui\s*([\s\S]*?)\s*```/g;
+  const a2uiBlocks: unknown[][] = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = a2uiRegex.exec(text)) !== null) {
+    try {
+      const parsed = JSON.parse(match[1]);
+      if (Array.isArray(parsed)) {
+        a2uiBlocks.push(parsed);
+      }
+    } catch {
+      console.warn('[agent] Failed to parse A2UI block as JSON');
+    }
+  }
+
+  const cleanText = text.replace(a2uiRegex, '').trim();
+  return { cleanText, a2uiBlocks };
 }
 
 export default async (req: Request) => {
@@ -198,6 +446,15 @@ export default async (req: Request) => {
     );
   }
 
+  const url = new URL(req.url);
+  const isAgUi =
+    req.headers.get('x-ag-ui-protocol') === 'true' ||
+    url.searchParams.get('protocol') === 'ag-ui' ||
+    body.protocol === 'ag-ui';
+
+  const threadId = body.threadId || `thread-${crypto.randomUUID()}`;
+  const runId = body.runId || `run-${crypto.randomUUID()}`;
+
   const isToolResultTurn = Boolean(body.toolResult);
   if (!body.message && !isToolResultTurn) {
     return new Response(
@@ -210,7 +467,11 @@ export default async (req: Request) => {
     async start(controller) {
       try {
         if (isDemoMode()) {
-          await streamDemoTurn(controller, isToolResultTurn);
+          if (isAgUi) {
+            await streamAgUiDemo(controller, isToolResultTurn, threadId, runId, body.message || '');
+          } else {
+            await streamLegacyDemo(controller, isToolResultTurn);
+          }
           controller.close();
           return;
         }
@@ -221,11 +482,18 @@ export default async (req: Request) => {
         }
 
         const model = resolveModel();
-        // Tools are interaction-scoped in the Interactions API, so re-send them every turn.
         const tools = body.tools ?? [];
 
-        // Build this turn's `input`: either the user's message, or the browser's tool result chained
-        // onto the previous interaction via previous_interaction_id.
+        if (isAgUi) {
+          controller.enqueue(
+            formatAgUiSse({
+              type: AgUiEventType.RUN_STARTED,
+              runId,
+              threadId,
+            }),
+          );
+        }
+
         const input = isToolResultTurn
           ? [
               {
@@ -237,44 +505,153 @@ export default async (req: Request) => {
             ]
           : body.message;
 
-        const { interactionId, functionCall } = await streamGeminiTurn(controller, apiKey, {
-          model,
-          input,
-          previous_interaction_id: body.previousInteractionId,
-          tools,
-          system_instruction: SYSTEM_INSTRUCTION,
-        });
+        const messageId = `msg-${crypto.randomUUID()}`;
+        let textStarted = false;
+        let accumulatedText = '';
 
-        if (functionCall) {
-          // Hand the call back to the browser — WE DO NOT EXECUTE IT. The browser runs it via
-          // navigator.modelContext (logged in DevTools) and calls back with the result.
+        const { interactionId, functionCall } = await streamGeminiTurn(
+          apiKey,
+          {
+            model,
+            input,
+            previous_interaction_id: body.previousInteractionId,
+            tools,
+            system_instruction: SYSTEM_INSTRUCTION,
+          },
+          (delta) => {
+            accumulatedText += delta;
+
+            if (isAgUi) {
+              if (!textStarted) {
+                controller.enqueue(
+                  formatAgUiSse({
+                    type: AgUiEventType.TEXT_MESSAGE_START,
+                    messageId,
+                    role: 'assistant',
+                  }),
+                );
+                textStarted = true;
+              }
+              controller.enqueue(
+                formatAgUiSse({
+                  type: AgUiEventType.TEXT_MESSAGE_CONTENT,
+                  messageId,
+                  delta,
+                }),
+              );
+            } else {
+              controller.enqueue(formatLegacySse('token', { token: delta }));
+            }
+          },
+        );
+
+        if (isAgUi && textStarted) {
           controller.enqueue(
-            sseEvent('tool_call', {
-              id: functionCall.id,
-              name: functionCall.name,
-              arguments: functionCall.arguments,
-              interactionId,
+            formatAgUiSse({
+              type: AgUiEventType.TEXT_MESSAGE_END,
+              messageId,
             }),
           );
+
+          // Check if response contains embedded A2UI blocks
+          const { a2uiBlocks } = extractA2uiBlocks(accumulatedText);
+          for (let i = 0; i < a2uiBlocks.length; i++) {
+            const validation = validateA2uiMessages(a2uiBlocks[i]);
+            if (validation.valid) {
+              controller.enqueue(
+                formatAgUiSse({
+                  type: AgUiEventType.ACTIVITY_SNAPSHOT,
+                  messageId: `act-${messageId}-${i}`,
+                  activityType: 'a2ui-surface',
+                  content: {
+                    messages: a2uiBlocks[i],
+                  },
+                }),
+              );
+            } else {
+              console.warn('[agent] Dropping invalid A2UI block:', validation.errors);
+            }
+          }
         }
 
-        controller.enqueue(sseEvent('done', {}));
-        controller.close();
-      } catch (error) {
-        if (error instanceof RateLimitedError) {
+        if (functionCall) {
+          if (isAgUi) {
+            controller.enqueue(
+              formatAgUiSse({
+                type: AgUiEventType.TOOL_CALL_START,
+                toolCallId: functionCall.id,
+                toolCallName: functionCall.name,
+                interactionId,
+              }),
+            );
+
+            controller.enqueue(
+              formatAgUiSse({
+                type: AgUiEventType.TOOL_CALL_ARGS,
+                toolCallId: functionCall.id,
+                delta: JSON.stringify(functionCall.arguments),
+              }),
+            );
+
+            controller.enqueue(
+              formatAgUiSse({
+                type: AgUiEventType.TOOL_CALL_END,
+                toolCallId: functionCall.id,
+                interactionId,
+              }),
+            );
+          } else {
+            controller.enqueue(
+              formatLegacySse('tool_call', {
+                id: functionCall.id,
+                name: functionCall.name,
+                arguments: functionCall.arguments,
+                interactionId,
+              }),
+            );
+          }
+        }
+
+        if (isAgUi) {
           controller.enqueue(
-            sseEvent('error', {
-              code: 'RATE_LIMITED',
-              message: "We've hit the shelter's request limit for now. Please try again in a minute.",
+            formatAgUiSse({
+              type: AgUiEventType.RUN_FINISHED,
+              runId,
+              threadId,
+              result: interactionId ? { interactionId } : undefined,
+              metadata: interactionId ? { interactionId } : undefined,
             }),
           );
         } else {
+          controller.enqueue(formatLegacySse('done', { interactionId }));
+        }
+
+        controller.close();
+      } catch (error) {
+        if (isAgUi) {
           controller.enqueue(
-            sseEvent('error', {
-              code: 'UPSTREAM_ERROR',
+            formatAgUiSse({
+              type: AgUiEventType.RUN_ERROR,
+              code: error instanceof RateLimitedError ? 'RATE_LIMITED' : 'UPSTREAM_ERROR',
               message: error instanceof Error ? error.message : 'Unknown error',
             }),
           );
+        } else {
+          if (error instanceof RateLimitedError) {
+            controller.enqueue(
+              formatLegacySse('error', {
+                code: 'RATE_LIMITED',
+                message: "We've hit the shelter's request limit for now. Please try again in a minute.",
+              }),
+            );
+          } else {
+            controller.enqueue(
+              formatLegacySse('error', {
+                code: 'UPSTREAM_ERROR',
+                message: error instanceof Error ? error.message : 'Unknown error',
+              }),
+            );
+          }
         }
         controller.close();
       }

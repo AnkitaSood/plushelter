@@ -1,7 +1,7 @@
-import { Component, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
+import { Component, ElementRef, computed, inject, signal, viewChild } from '@angular/core';
 import { httpResource } from '@angular/common/http';
 import { form } from '@angular/forms/signals';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { Dialog } from '@angular/cdk/dialog';
 import { NotificationService } from '../../ui/notifications/notification.service';
 import { Button } from '../../ui/button/button';
@@ -11,6 +11,8 @@ import { StatusBadge } from '../../ui/status-badge/status-badge';
 import { TextareaField } from '../../ui/textarea-field/textarea-field';
 import { CritterLoader } from '../../ui/critter-loader/critter-loader';
 import type { Animal } from '../../data/roster';
+import { MOCK_ANIMALS } from '../../data/roster';
+import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
 import { AdoptedAnimalsStore } from '../../data/adopted-animals-store';
 import {
   EMPTY_APPLICATION,
@@ -229,15 +231,21 @@ import {
 })
 export class AdoptionFlow {
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly dialog = inject(Dialog);
   private readonly adoptedStore = inject(AdoptedAnimalsStore);
+  private readonly admittedStore = inject(AdmittedAnimalsStore);
   private readonly notifications = inject(NotificationService);
   private readonly certificate = viewChild<ElementRef<HTMLElement>>('certificate');
 
-  /** Arrives the same way Intake Triage's roster branch used to read it — via nav `state` —
-   * but is required here: this route only makes sense arriving from a roster click. */
+  /**
+   * Resolves the target animal from one of two entry paths:
+   * 1. Full Animal object in router navigation state (from the Roster "Apply" button).
+   * 2. `?id=<animalId>` query param (from the A2UI concierge canvas "Apply for X" button),
+   *    looked up first in AdmittedAnimalsStore then in MOCK_ANIMALS.
+   */
   protected readonly animal = signal<Animal | undefined>(
-    'id' in (history.state ?? {}) ? (history.state as Animal) : undefined,
+    this.resolveAnimal(),
   );
 
   protected readonly applicationForm = form(signal<AdoptionApplication>(EMPTY_APPLICATION));
@@ -266,19 +274,21 @@ export class AdoptionFlow {
 
   constructor() {
     if (!this.animal()) this.router.navigate(['/roster']);
+  }
 
-    // The rare Adoption-Pink celebration toast — fired the moment the certificate resolves.
-    effect(() => {
-      if (this.certificateResource.status() === 'resolved') {
-        this.notifications.celebrate(
-          `${this.animal()?.name ?? 'This companion'} has been placed. Certificate on file.`,
-          {
-            onView: () => this.certificate()?.nativeElement.scrollIntoView({ behavior: 'smooth' }),
-          },
-        );
-      }
-    });
-
+  /** Resolves the Animal from navigation state (roster path) or query param id (concierge path). */
+  private resolveAnimal(): Animal | undefined {
+    // Path 1: full Animal carried in router nav state (from Roster click)
+    if ('id' in (history.state ?? {})) {
+      return history.state as Animal;
+    }
+    // Path 2: ?id=<animalId> from A2UI concierge canvas action
+    const animalId = this.route.snapshot.queryParamMap.get('id');
+    if (!animalId) return undefined;
+    return (
+      this.admittedStore.admitted().find((a) => a.id === animalId) ??
+      MOCK_ANIMALS.find((a) => a.id === animalId)
+    );
   }
 
   /** Confirms, then commits the adoption and kicks off the certificate resource. ConfirmDialog

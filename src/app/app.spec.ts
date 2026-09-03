@@ -3,11 +3,21 @@ import { provideRouter } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { App } from './app';
 
+import { provideA2Ui } from '@a2ui/angular/v0_9';
+import { provideShelterMarkdownRenderer } from './a2ui/shelter-catalog';
+
 describe('App', () => {
   beforeEach(async () => {
+    (document as any).adoptedStyleSheets = [];
+
     await TestBed.configureTestingModule({
       imports: [App],
-      providers: [provideZonelessChangeDetection(), provideRouter([])]
+      providers: [
+        provideZonelessChangeDetection(),
+        provideRouter([]),
+        provideShelterMarkdownRenderer(),
+        provideA2Ui(() => ({ catalogs: [], actionHandler: () => {} })),
+      ],
     }).compileComponents();
   });
 

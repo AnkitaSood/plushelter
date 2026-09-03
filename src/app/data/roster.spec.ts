@@ -16,6 +16,8 @@ describe('MOCK_ANIMALS', () => {
       expect(typeof a.condition).toBe('string');
       expect(typeof a.backstory).toBe('string');
       expect(typeof a.available).toBe('boolean');
+      expect(typeof a.surrenderedAt).toBe('string');
+      expect(a.surrenderedAt?.length).toBeGreaterThan(0);
     }
   });
 

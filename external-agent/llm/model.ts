@@ -13,7 +13,10 @@ export function resolveAgentModel(): string | BaseLlm {
 
   if (provider === 'ollama') {
     const model = process.env['OLLAMA_MODEL']?.trim() || DEFAULT_OLLAMA_MODEL;
-    const host = process.env['OLLAMA_BASE_URL']?.trim() || DEFAULT_OLLAMA_HOST;
+    const host =
+      process.env['OLLAMA_BASE_URL']?.trim() ||
+      process.env['OLLAMA_HOST']?.trim() ||
+      DEFAULT_OLLAMA_HOST;
     return new OllamaLlm(model, host);
   }
 

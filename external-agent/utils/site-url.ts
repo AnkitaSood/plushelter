@@ -2,6 +2,9 @@
 export function normalizeSiteUrl(url: string): string {
   const trimmed = url.trim();
   if (!/^https?:\/\//i.test(trimmed)) {
+    if (/^(localhost|127\.0\.0\.1)(:\d+)?/i.test(trimmed)) {
+      return `http://${trimmed}`;
+    }
     return `https://${trimmed}`;
   }
   return trimmed;

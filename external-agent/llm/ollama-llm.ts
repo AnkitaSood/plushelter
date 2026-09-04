@@ -19,6 +19,7 @@ interface ContentPartLike {
     args?: Record<string, unknown>;
   };
   functionResponse?: {
+    name?: string;
     response?: unknown;
   };
 }
@@ -41,6 +42,10 @@ function sanitizeSchema(schema: unknown): unknown {
 
   if (typeof next['type'] === 'string') {
     next['type'] = next['type'].toLowerCase();
+  }
+
+  if (next['type'] === 'object' && !next['properties']) {
+    next['properties'] = {};
   }
 
   if (next['properties'] && typeof next['properties'] === 'object') {
@@ -95,8 +100,82 @@ function toOllamaTools(llmRequest: LlmRequest): Tool[] | undefined {
   return tools.length > 0 ? tools : undefined;
 }
 
-function toOllamaMessages(contents: LlmRequest['contents']): Message[] {
-  return contents.flatMap((content) => {
+function extractSystemInstruction(llmRequest: LlmRequest): string | undefined {
+  const raw = llmRequest.config?.systemInstruction;
+  if (!raw) {
+    return undefined;
+  }
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+  if (
+    typeof raw === 'object' &&
+    raw !== null &&
+    'parts' in raw &&
+    Array.isArray((raw as { parts?: Array<{ text?: string }> }).parts)
+  ) {
+    const text = (raw as { parts: Array<{ text?: string }> }).parts
+      .map((p) => p.text ?? '')
+      .join('\n')
+      .trim();
+    return text.length > 0 ? text : undefined;
+  }
+  return undefined;
+}
+
+function extractFallbackToolCalls(
+  text: string,
+  tools?: Tool[],
+): Array<{ name: string; args: Record<string, unknown> }> {
+  if (!tools || tools.length === 0 || !text) {
+    return [];
+  }
+
+  const toolNames = new Set(tools.map((t) => t.function.name));
+  const results: Array<{ name: string; args: Record<string, unknown> }> = [];
+
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '{') {
+      if (depth === 0) {
+        start = i;
+      }
+      depth++;
+    } else if (text[i] === '}') {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        const jsonSlice = text.slice(start, i + 1);
+        start = -1;
+        try {
+          const parsed = JSON.parse(jsonSlice) as Record<string, unknown>;
+          if (typeof parsed['name'] === 'string' && toolNames.has(parsed['name'])) {
+            const rawArgs = parsed['parameters'] ?? parsed['arguments'] ?? {};
+            const args =
+              typeof rawArgs === 'object' && rawArgs !== null
+                ? (rawArgs as Record<string, unknown>)
+                : {};
+            results.push({ name: parsed['name'], args });
+          }
+        } catch {
+          // not a valid JSON chunk
+        }
+      }
+    }
+  }
+
+  return results;
+}
+
+function toOllamaMessages(llmRequest: LlmRequest): Message[] {
+  const messages: Message[] = [];
+  const systemInstruction = extractSystemInstruction(llmRequest);
+  if (systemInstruction) {
+    messages.push({ role: 'system', content: systemInstruction });
+  }
+
+  const contentMessages = (llmRequest.contents ?? []).flatMap((content) => {
     const role = content.role === 'model' ? 'assistant' : (content.role ?? 'user');
     const parts = (content.parts ?? []) as ContentPartLike[];
     const toolCallParts = parts.filter((part) => 'functionCall' in part);
@@ -107,10 +186,19 @@ function toOllamaMessages(contents: LlmRequest['contents']): Message[] {
       .join('\n');
 
     if (functionResponseParts.length > 0) {
-      return functionResponseParts.map((part) => ({
-        role: 'tool' as const,
-        content: JSON.stringify(part.functionResponse?.response),
-      }));
+      return functionResponseParts.map((part) => {
+        const msg: Message = {
+          role: 'tool' as const,
+          content:
+            typeof part.functionResponse?.response === 'string'
+              ? part.functionResponse.response
+              : JSON.stringify(part.functionResponse?.response ?? {}),
+        };
+        if (part.functionResponse?.name) {
+          msg.tool_name = part.functionResponse.name;
+        }
+        return msg;
+      });
     }
 
     const message: Message = { role, content: textParts };
@@ -121,11 +209,20 @@ function toOllamaMessages(contents: LlmRequest['contents']): Message[] {
           return [];
         }
 
+        let args = part.functionCall.args ?? {};
+        if (typeof args === 'string') {
+          try {
+            args = JSON.parse(args) as Record<string, unknown>;
+          } catch {
+            args = {};
+          }
+        }
+
         return [
           {
             function: {
               name: part.functionCall.name,
-              arguments: part.functionCall.args ?? {},
+              arguments: args,
             },
           },
         ];
@@ -134,6 +231,9 @@ function toOllamaMessages(contents: LlmRequest['contents']): Message[] {
 
     return message.content || message.tool_calls ? [message] : [];
   });
+
+  messages.push(...contentMessages);
+  return messages;
 }
 
 /**
@@ -145,7 +245,9 @@ export class OllamaLlm extends BaseLlm {
 
   constructor(
     model: string,
-    host = normalizeOllamaHost(process.env['OLLAMA_BASE_URL'] ?? 'http://localhost:11434'),
+    host = normalizeOllamaHost(
+      process.env['OLLAMA_BASE_URL'] ?? process.env['OLLAMA_HOST'] ?? 'http://localhost:11434',
+    ),
   ) {
     super({ model });
     this.client = new Ollama({ host });
@@ -160,7 +262,7 @@ export class OllamaLlm extends BaseLlm {
     _stream = true,
   ): AsyncGenerator<LlmResponse, void> {
     const tools = toOllamaTools(llmRequest);
-    const messages = toOllamaMessages(llmRequest.contents);
+    const messages = toOllamaMessages(llmRequest);
 
     const response = await this.client.chat({
       model: this.model,
@@ -173,15 +275,35 @@ export class OllamaLlm extends BaseLlm {
 
     if (response.message.tool_calls?.length) {
       for (const toolCall of response.message.tool_calls) {
+        let args = toolCall.function.arguments;
+        if (typeof args === 'string') {
+          try {
+            args = JSON.parse(args) as Record<string, unknown>;
+          } catch {
+            args = {};
+          }
+        }
         parts.push({
           functionCall: {
             name: toolCall.function.name,
-            args: toolCall.function.arguments,
+            args: (args as Record<string, unknown>) ?? {},
           },
         });
       }
     } else if (response.message.content) {
-      parts.push({ text: response.message.content });
+      const fallbackCalls = extractFallbackToolCalls(response.message.content, tools);
+      if (fallbackCalls.length > 0) {
+        for (const call of fallbackCalls) {
+          parts.push({
+            functionCall: {
+              name: call.name,
+              args: call.args,
+            },
+          });
+        }
+      } else {
+        parts.push({ text: response.message.content });
+      }
     }
 
     if (parts.length === 0) {

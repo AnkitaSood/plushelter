@@ -16,6 +16,7 @@
     "external-agent:agent": "GEMINI_API_KEY=$(netlify env:get GEMINI_API_KEY --context dev) npx adk run external-agent/agent.ts",
     "external-agent:web": "GEMINI_API_KEY=$(netlify env:get GEMINI_API_KEY --context dev) npx adk web external-agent",
     "external-agent:agent:ollama": "AGENT_LLM_PROVIDER=ollama npx adk run external-agent/agent.ts",
+    "external-agent:ollama": "npm run external-agent:agent:ollama",
     "external-agent:web:ollama": "AGENT_LLM_PROVIDER=ollama npx adk web external-agent"
   },
   "prettier": {

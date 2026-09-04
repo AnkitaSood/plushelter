@@ -1,7 +1,7 @@
 import {
   ApplicationConfig,
   inject,
-  provideBrowserGlobalErrorListeners,
+  provideBrowserGlobalErrorListeners, provideExperimentalWebMcpTools,
 } from '@angular/core';
 import { provideHttpClient } from '@angular/common/http';
 import { provideRouter, withExperimentalAutoCleanupInjectors } from '@angular/router';
@@ -20,12 +20,14 @@ import {
 } from './a2ui/shelter-catalog';
 
 import { routes } from './app.routes';
+import {APP_TOOLS} from './webmcp/shelter-tools';
 
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideRouter(routes, withExperimentalAutoCleanupInjectors()),
     provideHttpClient(),
+    provideExperimentalWebMcpTools(APP_TOOLS),
     provideExperimentalWebMcpForms(),
     provideShelterMarkdownRenderer(),
     provideA2Ui(() => {

@@ -79,7 +79,7 @@ export class WebMcpSession {
     }
 
     if (this.page) {
-      await this.page.goto(url, { waitUntil: 'networkidle0', timeout: 60_000 });
+      await this.page.goto(url, { waitUntil: 'load', timeout: 30_000 });
       this.currentUrl = url;
       return;
     }
@@ -92,7 +92,7 @@ export class WebMcpSession {
 
     this.browser = await puppeteer.launch(WEBMCP_LAUNCH_OPTIONS);
     this.page = (await this.browser.newPage()) as WebMcpEnabledPage;
-    await this.page.goto(url, { waitUntil: 'networkidle0', timeout: 60_000 });
+    await this.page.goto(url, { waitUntil: 'load', timeout: 30_000 });
     this.currentUrl = url;
 
     return { url };
@@ -106,6 +106,21 @@ export class WebMcpSession {
       description: tool.description,
       inputSchema: tool.inputSchema ?? null,
     }));
+  }
+
+  async waitForTools(timeoutMs = 10_000): Promise<WebMcpToolDescriptor[]> {
+    this.assertPageOpen();
+
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const tools = this.listTools();
+      if (tools.length > 0) {
+        return tools;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+
+    return this.listTools();
   }
 
   async invokeTool(

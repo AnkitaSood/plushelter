@@ -105,7 +105,7 @@ export const animalDurationStatsTool: ShelterTool = {
   },
 };
 
-/** APP-LEVEL: available on every route except /faq (see app.routes.ts's app-tools parent route). */
+/** APP-LEVEL: available on every route. */
 export const searchRosterTool: ShelterTool = {
   name: 'searchRoster',
   description:
@@ -252,7 +252,6 @@ export const APP_TOOLS: ShelterTool[] = [
 /** Tools registered only on the /roster route (with auto-cleanup on navigation away). */
 export const ROSTER_ROUTE_TOOLS: ShelterTool[] = [filterRosterBySpeciesTool];
 
-/** How each tool is registered — surfaced by the Agent Console so the four surfaces are legible. */
 export interface RegisteredTool {
   scope: 'Application' | 'Route · /roster' | 'Service' | 'Signal Form';
   tool: ShelterTool;

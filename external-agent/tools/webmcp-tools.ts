@@ -86,11 +86,12 @@ export const listWebMcpToolsTool = new FunctionTool({
   execute: async (input) => {
     const { url } = input as { url?: string };
     const targetUrl = await openPage(resolvePageUrl(url));
+    const tools = await webMcpSession.waitForTools();
 
     return {
       url: targetUrl,
-      count: webMcpSession.listTools().length,
-      tools: webMcpSession.listTools(),
+      count: tools.length,
+      tools,
     };
   },
 });

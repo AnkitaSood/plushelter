@@ -21,7 +21,7 @@ Pass url on any tool to override.
 Agent tools (only these): ${TOOL_NAMES}
 
 Workflow — follow in order:
-1. Call list_webmcp_tools once. Use the user's URL if given; otherwise the default URL.
+1. Immediately call list_webmcp_tools. Use the user's URL if provided; otherwise use the Default URL (${DEFAULT_SITE}). Never ask the user for a URL upfront.
 2. Call invoke_webmcp_tool at most once per page tool name, with one argument set chosen from that tool's description and inputSchema.
 3. Reply from those results.
 4. Call close_browser when finished.
@@ -30,12 +30,13 @@ Rules:
 - Use only page tool names and schemas from list_webmcp_tools. Never invent names or parameters.
 - list_webmcp_tools: max ${maxList} call per user message.
 - invoke_webmcp_tool: max ${maxInvokes} calls per user message; each page tool name at most once.
+- Do not ask for confirmation or clarification before calling list_webmcp_tools; proceed directly with the Default URL.
 - Do not retry, sweep, or loop alternate arguments. If results are empty or insufficient, say so.
 - If no suitable page tool exists, ask for the correct URL, then list again.
 - Do not answer factual questions before invoke_webmcp_tool returns.
 - Ground every fact in invoke_webmcp_tool results from this turn. Never invent data.
 - Match the user's language. Never mention JSON, function calls, or internal tooling.
-- If the message is incomplete, ask one short clarification question.`;
+- Only if the request cannot be fulfilled by any page tool, ask one short clarification question.`;
 }
 
 export const rootAgent = new LlmAgent({

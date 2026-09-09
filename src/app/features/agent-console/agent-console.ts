@@ -93,6 +93,19 @@ interface LoggedAgUiEvent {
                 <app-status-badge [status]="scopeBadge(rt.scope)">{{ rt.scope }}</app-status-badge>
               </div>
               <p class="tool__desc">{{ rt.tool.description }}</p>
+              @if (rt.tool.annotations; as a) {
+                <div class="tool__annotations" aria-label="Tool annotations">
+                  <span class="tool__hint" [class.tool__hint--active]="a.readOnlyHint">
+                    readOnly: {{ a.readOnlyHint ? 'true' : 'false' }}
+                  </span>
+                  <span class="tool__hint" [class.tool__hint--alert]="a.consequentialHint">
+                    consequential: {{ a.consequentialHint ? 'true' : 'false' }}
+                  </span>
+                  <span class="tool__hint" [class.tool__hint--alert]="a.untrustedContentHint">
+                    untrustedContent: {{ a.untrustedContentHint ? 'true' : 'false' }}
+                  </span>
+                </div>
+              }
               <label class="tool__args-label">
                 <span>Arguments (JSON)</span>
                 <textarea
@@ -227,6 +240,10 @@ interface LoggedAgUiEvent {
     .tool__head { display: flex; align-items: center; gap: var(--space-3); }
     .tool__name { margin: 0; font-family: var(--font-mono); font-size: var(--text-base); }
     .tool__desc { margin: 0; font-size: var(--text-sm); }
+    .tool__annotations { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-1) 0; }
+    .tool__hint { font-family: var(--font-mono); font-size: var(--text-xs); padding: 2px 6px; border-radius: var(--radius-sm); border: 1px solid var(--border-color); background: var(--color-bg-subtle, #f5f3ef); color: var(--color-ink-muted, #666); }
+    .tool__hint--active { background: var(--color-status-available); color: var(--color-ink, #4a3f35); font-weight: 500; }
+    .tool__hint--alert { background: var(--color-status-critical); color: var(--color-ink, #4a3f35); font-weight: 500; }
     .tool__args-label { display: flex; flex-direction: column; gap: var(--space-1); font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; }
     .tool__args { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-ink); background: var(--color-bg); border: var(--border-width) solid var(--border-color); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); resize: vertical; }
     .tool__args:focus { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: 2px; }

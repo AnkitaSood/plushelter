@@ -1,5 +1,5 @@
 import { EnvironmentInjector, Service, inject, runInInjectionContext } from '@angular/core';
-import { SHELTER_TOOL_REGISTRY } from './shelter-tools';
+import { SHELTER_TOOL_REGISTRY, type WebMcpToolAnnotations } from './shelter-tools';
 
 /**
  * Browser-side bridge between the in-page agent and the page's WebMCP tools.
@@ -23,6 +23,7 @@ export interface WebMcpToolInfo {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  annotations?: WebMcpToolAnnotations;
 }
 
 /** A Gemini function-tool declaration (what /api/agent forwards to the Interactions API). */
@@ -171,6 +172,7 @@ export class ModelContextClient {
       name: rt.tool.name,
       description: rt.tool.description,
       inputSchema: rt.tool.inputSchema as Record<string, unknown>,
+      annotations: rt.tool.annotations,
     }));
   }
 

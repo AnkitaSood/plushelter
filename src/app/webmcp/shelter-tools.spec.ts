@@ -6,8 +6,10 @@ import {
   admitAnimalTool,
   animalDurationStatsTool,
   filterRosterBySpeciesTool,
+  performCriticalMedicalProcedureTool,
   searchRosterTool,
   shelterStatsTool,
+  SHELTER_TOOL_REGISTRY,
   type ShelterTool,
 } from './shelter-tools';
 
@@ -162,4 +164,59 @@ describe('shelter WebMCP tools', () => {
       expect(text).toContain('Elwyn');
     });
   });
+
+  describe('tool annotations', () => {
+    it('defines WebMCP annotations for all registered shelter tools', () => {
+      expect(SHELTER_TOOL_REGISTRY.length).toBeGreaterThan(0);
+      for (const entry of SHELTER_TOOL_REGISTRY) {
+        expect(entry.tool.annotations).toBeDefined();
+        expect(typeof entry.tool.annotations?.readOnlyHint).toBe('boolean');
+        expect(typeof entry.tool.annotations?.consequentialHint).toBe('boolean');
+        expect(typeof entry.tool.annotations?.untrustedContentHint).toBe('boolean');
+      }
+    });
+
+    it('marks read-only query tools with readOnlyHint: true and consequentialHint: false', () => {
+      expect(searchRosterTool.annotations).toEqual({
+        readOnlyHint: true,
+        consequentialHint: false,
+        untrustedContentHint: false,
+      });
+
+      expect(shelterStatsTool.annotations).toEqual({
+        readOnlyHint: true,
+        consequentialHint: false,
+        untrustedContentHint: false,
+      });
+
+      expect(animalDurationStatsTool.annotations).toEqual({
+        readOnlyHint: true,
+        consequentialHint: false,
+        untrustedContentHint: false,
+      });
+
+      expect(filterRosterBySpeciesTool.annotations).toEqual({
+        readOnlyHint: true,
+        consequentialHint: false,
+        untrustedContentHint: false,
+      });
+    });
+
+    it('marks state-mutating intake tool with readOnlyHint: false and consequentialHint: false', () => {
+      expect(admitAnimalTool.annotations).toEqual({
+        readOnlyHint: false,
+        consequentialHint: false,
+        untrustedContentHint: false,
+      });
+    });
+
+    it('marks high-stakes HITL clinical procedure with consequentialHint: true and readOnlyHint: false', () => {
+      expect(performCriticalMedicalProcedureTool.annotations).toEqual({
+        readOnlyHint: false,
+        consequentialHint: true,
+        untrustedContentHint: false,
+      });
+    });
+  });
 });
+

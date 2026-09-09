@@ -16,7 +16,27 @@ import { HitlAuthorizationService } from './hitl-authorization.service';
  * (WebMCP does not guarantee the agent's args match the schema), which keeps these definitions
  * readable — the tradeoff the Angular docs' own "validate tool inputs" note calls for.
  */
-export type ShelterTool = WebMcpToolDescriptor<any>;
+export interface WebMcpToolAnnotations {
+  /**
+   * When true, indicates that the tool only reads information and does not modify
+   * the state of the application or system.
+   */
+  readOnlyHint?: boolean;
+  /**
+   * When true, indicates that the tool's output contains untrusted data from the
+   * perspective of the tool author (for example, user-generated content, reviews, or external web data).
+   */
+  untrustedContentHint?: boolean;
+  /**
+   * When true, indicates that executing the tool results in significant, real-world,
+   * or non-reversible actions.
+   */
+  consequentialHint?: boolean;
+}
+
+export type ShelterTool = WebMcpToolDescriptor<any> & {
+  annotations?: WebMcpToolAnnotations;
+};
 
 /** Every WebMCP tool returns MCP content blocks; ours are all plain text. */
 function text(body: string): { content: { type: 'text'; text: string }[] } {
@@ -48,6 +68,11 @@ export const animalDurationStatsTool: ShelterTool = {
       },
     },
     additionalProperties: true,
+  },
+  annotations: {
+    readOnlyHint: true,
+    consequentialHint: false,
+    untrustedContentHint: false,
   },
   execute: (args) => {
     const rawArgs = args ?? {};
@@ -117,6 +142,11 @@ export const searchRosterTool: ShelterTool = {
     required: ['criteria'],
     additionalProperties: false,
   },
+  annotations: {
+    readOnlyHint: true,
+    consequentialHint: false,
+    untrustedContentHint: false,
+  },
   execute: (args) => {
     const criteria = String((args as { criteria?: unknown })?.criteria ?? '').toLowerCase().trim();
     const adoptedIds = new Set(inject(AdoptedAnimalsStore).adoptions().map((r) => r.animalId));
@@ -135,6 +165,11 @@ export const shelterStatsTool: ShelterTool = {
   name: 'getShelterStats',
   description: 'Report current shelter counts: total animals on file, cleared for placement, admitted this session, and adopted this session.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  annotations: {
+    readOnlyHint: true,
+    consequentialHint: false,
+    untrustedContentHint: false,
+  },
   execute: () => {
     const admitted = inject(AdmittedAnimalsStore).admitted();
     const adopted = inject(AdoptedAnimalsStore).adoptions();
@@ -156,6 +191,11 @@ export const filterRosterBySpeciesTool: ShelterTool = {
     properties: { species: { type: 'string', description: 'Exact species to filter by, e.g. "Bear".' } },
     required: ['species'],
     additionalProperties: false,
+  },
+  annotations: {
+    readOnlyHint: true,
+    consequentialHint: false,
+    untrustedContentHint: false,
   },
   execute: (args) => {
     const species = String((args as { species?: unknown })?.species ?? '').toLowerCase().trim();
@@ -182,6 +222,11 @@ export const admitAnimalTool: ShelterTool = {
     },
     required: ['name', 'species'],
     additionalProperties: false,
+  },
+  annotations: {
+    readOnlyHint: false,
+    consequentialHint: false,
+    untrustedContentHint: false,
   },
   execute: (args) => {
     const a = args as { name?: unknown; species?: unknown; condition?: unknown };
@@ -216,6 +261,11 @@ export const performCriticalMedicalProcedureTool: ShelterTool = {
     },
     required: ['animalId', 'procedureName'],
     additionalProperties: false,
+  },
+  annotations: {
+    readOnlyHint: false,
+    consequentialHint: true,
+    untrustedContentHint: false,
   },
   execute: async (args) => {
     const a = args as { animalId?: unknown; procedureName?: unknown; estimatedStuffingLoss?: unknown; riskLevel?: unknown };

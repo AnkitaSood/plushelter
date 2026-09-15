@@ -53,87 +53,85 @@ const CANVAS_SURFACE_ID = 'concierge-canvas';
     SurfaceComponent,
   ],
   template: `
-    <div class="concierge-view">
-      <header class="concierge-view__header">
-        <h1>Adoption Concierge</h1>
-        <p class="concierge-view__sub">
-          Describe what you're looking for — the concierge will recommend matched companions
-          with interactive adoption cards below.
-        </p>
-      </header>
+    <header class="concierge-view__header">
+      <h1>Adoption Concierge</h1>
+      <p class="concierge-view__sub">
+        Describe what you're looking for — the concierge will recommend matched companions
+        with interactive adoption cards below.
+      </p>
+    </header>
 
-      <section class="concierge__panel" role="region" aria-label="Concierge conversation">
-        <!-- Scrollable content: chat bubbles + inline A2UI surface -->
-        <div class="concierge__transcript" role="log" aria-live="polite">
-          @if (history().length === 0 && !isStreaming()) {
-            <div class="concierge__empty">
-              <div class="empty-icon" aria-hidden="true">🧸</div>
-              <h2 class="empty-title">No Recommendations Yet</h2>
-              <p class="empty-text">
-                Start a conversation to see the concierge compose custom interactive cards,
-                compatibility gauges, and adoption buttons here.
-              </p>
-              <div class="empty-presets">
-                <span>Quick prompts:</span>
-                <button type="button" class="preset-pill" (click)="sendPreset('Low maintenance bears')">
-                  "Low maintenance bears."
-                </button>
-                <button type="button" class="preset-pill" (click)="sendPreset('Outdoorsy and active. High energy')">
-                  "Outdoorsy and active. High energy."
-                </button>
-              </div>
+    <section class="concierge__panel" role="region" aria-label="Concierge conversation">
+      <!-- Scrollable content: chat bubbles + inline A2UI surface -->
+      <div class="concierge__transcript" role="log" aria-live="polite">
+        @if (history().length === 0 && !isStreaming()) {
+          <div class="concierge__empty">
+            <div class="empty-icon" aria-hidden="true">🧸</div>
+            <h2 class="empty-title">No Recommendations Yet</h2>
+            <p class="empty-text">
+              Start a conversation to see the concierge compose custom interactive cards,
+              compatibility gauges, and adoption buttons here.
+            </p>
+            <div class="empty-presets">
+              <span>Quick prompts:</span>
+              <button type="button" class="preset-pill" (click)="sendPreset('Low maintenance bears')">
+                "Low maintenance bears."
+              </button>
+              <button type="button" class="preset-pill" (click)="sendPreset('Outdoorsy and active. High energy')">
+                "Outdoorsy and active. High energy."
+              </button>
             </div>
-          }
-
-          @for (turn of history(); track $index) {
-            <app-chat-bubble [role]="turn.role" [content]="turn.content" />
-          }
-
-          @if (isStreaming()) {
-            @if (streamingText(); as text) {
-              <app-chat-bubble role="concierge" [content]="text" />
-            } @else {
-              <app-critter-loader />
-            }
-          }
-
-          <!-- A2UI surface renders inline, directly after the reply -->
-          @if (hasActiveCanvas()) {
-            <div class="concierge__surface-block">
-              <div class="concierge__surface-bar">
-                <span class="concierge__surface-label">Matched companions</span>
-                <button
-                  type="button"
-                  class="concierge__surface-clear"
-                  (click)="clearCanvas()"
-                  aria-label="Clear matched companions"
-                >
-                  Clear
-                </button>
-              </div>
-              <a2ui-v09-surface [surfaceId]="canvasSurfaceId" />
-            </div>
-          }
-        </div>
-
-        @if (lastError(); as error) {
-          <app-status-badge status="critical">{{ error.message }}</app-status-badge>
+          </div>
         }
 
-        <!-- Composer pinned at the bottom of the single panel -->
-        <form class="concierge__composer" (submit)="onSubmit($event)">
-          <app-form-field
-            label="Message the concierge"
-            [(value)]="draft"
-            hint="Try: something low-maintenance for two kids"
-          />
-          <app-button type="submit" [disabled]="!canSend()">Send</app-button>
-        </form>
-      </section>
-    </div>
+        @for (turn of history(); track $index) {
+          <app-chat-bubble [role]="turn.role" [content]="turn.content"/>
+        }
+
+        @if (isStreaming()) {
+          @if (streamingText(); as text) {
+            <app-chat-bubble role="concierge" [content]="text"/>
+          } @else {
+            <app-critter-loader/>
+          }
+        }
+
+        <!-- A2UI surface renders inline, directly after the reply -->
+        @if (hasActiveCanvas()) {
+          <div class="concierge__surface-block">
+            <div class="concierge__surface-bar">
+              <span class="concierge__surface-label">Matched companions</span>
+              <button
+                type="button"
+                class="concierge__surface-clear"
+                (click)="clearCanvas()"
+                aria-label="Clear matched companions"
+              >
+                Clear
+              </button>
+            </div>
+            <a2ui-v09-surface [surfaceId]="canvasSurfaceId"/>
+          </div>
+        }
+      </div>
+
+      @if (lastError(); as error) {
+        <app-status-badge status="critical">{{ error.message }}</app-status-badge>
+      }
+
+      <!-- Composer pinned at the bottom of the single panel -->
+      <form class="concierge__composer" (submit)="onSubmit($event)">
+        <app-form-field
+          label="Message the concierge"
+          [(value)]="draft"
+          hint="Try: something low-maintenance for two kids"
+        />
+        <app-button type="submit" [disabled]="!canSend()">Send</app-button>
+      </form>
+    </section>
   `,
   styles: `
-    .concierge-view {
+    :host {
       display: flex;
       flex-direction: column;
       gap: var(--space-4);

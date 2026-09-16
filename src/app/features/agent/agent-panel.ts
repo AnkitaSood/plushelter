@@ -158,9 +158,10 @@ import { HitlAuthorizationService, HITL_SURFACE_ID } from '../../webmcp/hitl-aut
       font-family: var(--font-display);
       font-size: var(--text-base);
       font-weight: 600;
-      color: var(--color-ink);
+      /* Sits on the periwinkle fill — fixed ink, like Button/StatusBadge. */
+      color: var(--color-ink-on-accent);
       background: var(--color-primary);
-      border: var(--border-width) solid var(--border-color);
+      border: var(--border-width) solid var(--color-ink-on-accent);
       border-radius: var(--radius-md);
       box-shadow: var(--shadow-stacked);
       padding: var(--space-2) var(--space-4);
@@ -190,8 +191,11 @@ import { HitlAuthorizationService, HITL_SURFACE_ID } from '../../webmcp/hitl-aut
       align-items: center;
       gap: var(--space-2);
       padding: var(--space-2) var(--space-3);
-      border-bottom: var(--border-width) solid var(--border-color);
+      border-bottom: var(--border-width) solid var(--color-ink-on-accent);
       background: var(--color-primary);
+      /* Sits on the periwinkle fill — fixed ink, overriding the .dock ancestor's
+         theme-flipping ink. */
+      color: var(--color-ink-on-accent);
     }
 
     .panel__title {
@@ -246,7 +250,9 @@ import { HitlAuthorizationService, HITL_SURFACE_ID } from '../../webmcp/hitl-aut
     .msg--user {
       align-self: flex-end;
       background: var(--color-secondary);
-      border: var(--border-width) solid var(--border-color);
+      border: var(--border-width) solid var(--color-ink-on-accent);
+      /* Sits on the lavender fill — fixed ink. */
+      color: var(--color-ink-on-accent);
     }
 
     .msg--assistant {
@@ -311,10 +317,12 @@ import { HitlAuthorizationService, HITL_SURFACE_ID } from '../../webmcp/hitl-aut
       align-self: flex-start;
       width: 90%;
       background: var(--color-status-available);
-      border: var(--border-width) solid var(--border-color);
+      border: var(--border-width) solid var(--color-ink-on-accent);
       border-radius: var(--radius-sm);
       font-family: var(--font-mono);
       font-size: var(--text-xs);
+      /* Sits on the mint fill — fixed ink. */
+      color: var(--color-ink-on-accent);
     }
 
     .msg--pending {
@@ -325,8 +333,10 @@ import { HitlAuthorizationService, HITL_SURFACE_ID } from '../../webmcp/hitl-aut
       margin: 0;
       padding: var(--space-2) var(--space-3);
       background: var(--color-status-critical);
-      border-top: var(--border-width) solid var(--border-color);
+      border-top: var(--border-width) solid var(--color-ink-on-accent);
       font-size: var(--text-sm);
+      /* Sits on the salmon fill — fixed ink. */
+      color: var(--color-ink-on-accent);
     }
 
     .composer {

@@ -35,7 +35,7 @@ import { Component, input, output } from '@angular/core';
   styles: `
     .toast {
       background: var(--color-celebration);
-      border: var(--border-width) solid var(--border-color);
+      border: var(--border-width) solid var(--color-ink-on-accent);
       border-radius: var(--radius-md);
       padding: var(--space-3);
       min-width: 18rem;
@@ -108,13 +108,15 @@ import { Component, input, output } from '@angular/core';
       opacity: 1;
     }
 
-    /* Ink, not pink — a pink bar on the pink frame would be invisible. */
+    /* Ink, not pink — a pink bar on the pink frame would be invisible.
+       Fixed ink: the frame is candy-pink in both themes, so this must stay
+       the stamp ink even in dark mode, not the theme-flipping --color-ink. */
     .toast__progress {
       position: absolute;
       bottom: 0;
       left: 0;
       height: 2px;
-      background: var(--color-ink);
+      background: var(--color-ink-on-accent);
       display: block;
       border-radius: 0 0 var(--radius-md) 0;
     }

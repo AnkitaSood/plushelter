@@ -30,13 +30,6 @@ export const DEMO_RESPONSES = {
       'Verify eyes are firmly attached',
     ],
   },
-  conciergeChat: {
-    tokens: [
-      "Based on what you're looking for, I'd recommend Horace — a bear who did a long stretch in rehabilitation and came out the other side genuinely low-maintenance. ",
-      "He's calm, even-tempered, and great with kids.",
-    ],
-    animals: [MOCK_ANIMALS[0]],
-  },
   // Canned two-phase loop for the in-browser WebMCP agent (/api/agent). First the model "decides" to
   // call a page tool; the browser runs it and calls back; then the model narrates the result.
   webmcpAgent: {
@@ -136,8 +129,8 @@ export const DEMO_RESPONSES = {
       planText: 'Let me inspect our resident roster to see who is available. ',
       toolCall: {
         id: 'call-roster-1',
-        name: 'search_available_animals',
-        args: { species: 'bear', temperament: 'calm' },
+        name: 'searchRoster',
+        args: { criteria: 'calm bear' },
         interactionId: 'interaction-demo-1',
       },
       narrationText:

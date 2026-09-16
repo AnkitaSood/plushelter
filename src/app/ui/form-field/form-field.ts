@@ -81,7 +81,8 @@ let nextId = 0;
       font-family: var(--font-mono);
       font-size: var(--text-xs);
       font-weight: 700;
-      color: var(--color-ink);
+      /* Drawn on the salmon "!" chip fill — fixed ink, not theme-flipping. */
+      color: var(--color-ink-on-accent);
       background: var(--color-status-critical);
       border-radius: var(--radius-sm);
     }

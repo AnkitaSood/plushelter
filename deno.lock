@@ -38,7 +38,7 @@
         "npm:ag-charts-angular@^14.1.0",
         "npm:istanbul-lib-instrument@^6.0.3",
         "npm:jsdom@^29.1.1",
-        "npm:netlify-cli@^27.4.2",
+        "npm:netlify-cli@^27.8.0",
         "npm:ollama@~0.6.3",
         "npm:puppeteer@^25.3.0",
         "npm:rxjs@7.8",

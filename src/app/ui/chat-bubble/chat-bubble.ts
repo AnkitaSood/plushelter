@@ -21,9 +21,11 @@ import { Component, input } from '@angular/core';
       margin: 0;
       font-family: var(--font-body);
       font-size: var(--text-base);
-      color: var(--color-ink);
+      /* Both variants below always sit on a candy fill (secondary or primary),
+         never on the neutral page bg — fixed ink, not the theme-flipping one. */
+      color: var(--color-ink-on-accent);
       background: var(--color-bg);
-      border: var(--border-width) solid var(--border-color);
+      border: var(--border-width) solid var(--color-ink-on-accent);
       border-radius: var(--radius-md);
       padding: var(--space-3) var(--space-4);
       white-space: pre-wrap;

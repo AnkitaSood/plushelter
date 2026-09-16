@@ -32,15 +32,14 @@ describe('shelter WebMCP tools', () => {
       expect(text).not.toContain('Kelly');
     });
 
-    it('falls back to all cleared animals when nothing matches', () => {
+    it('returns no matches for criteria that hits nothing', () => {
       const text = run(searchRosterTool, { criteria: 'zzz-no-such-thing' });
       expect(text).toBe('No cleared animals match that description.');
     });
 
-    it('lists all cleared animals for an empty criteria', () => {
+    it('returns no matches for empty criteria, rather than the whole roster', () => {
       const text = run(searchRosterTool, { criteria: '' });
-      const clearedCount = MOCK_ANIMALS.filter((a) => a.available).length;
-      expect(text.split('\n').length).toBe(clearedCount);
+      expect(text).toBe('No cleared animals match that description.');
     });
 
     it('excludes animals that have been adopted', () => {

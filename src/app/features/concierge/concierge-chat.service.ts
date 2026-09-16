@@ -1,7 +1,22 @@
-import { Service } from '@angular/core';
+import { Service, inject } from '@angular/core';
 import { Observable } from 'rxjs';
+import {
+  EventType,
+  type BaseEvent,
+  type RunErrorEvent,
+  type RunFinishedEvent,
+  type TextMessageContentEvent,
+  type ToolCallArgsEvent,
+  type ToolCallEndEvent,
+  type ToolCallStartEvent,
+} from '@ag-ui/core';
+import type { HttpAgent } from '@ag-ui/client';
 export type { Animal } from '../../data/roster';
 import type { Animal } from '../../data/roster';
+import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
+import { AdoptedAnimalsStore } from '../../data/adopted-animals-store';
+import { ModelContextClient } from '../../webmcp/model-context-client';
+import { clearedRoster, matchRosterByCriteria } from '../../webmcp/shelter-tools';
 
 export interface ChatTokenEvent {
   type: 'token';
@@ -26,129 +41,124 @@ export interface ChatErrorEvent {
 
 export type ChatSseEvent = ChatTokenEvent | ChatToolResultEvent | ChatDoneEvent | ChatErrorEvent;
 
-function createProtocolError(message: string): ChatErrorEvent {
-  return { type: 'error', code: 'INVALID_SSE_EVENT', message };
-}
+const MAX_STEPS = 6;
 
-/** Parses one `event:`/`data:` record from the backend's SSE contract (specs.md §5) into our event union. */
-function parseSseRecord(raw: string): ChatSseEvent {
-  let eventType = 'message';
-  let dataLine = '';
-  for (const line of raw.split('\n')) {
-    if (line.startsWith('event:')) eventType = line.slice(6).trim();
-    else if (line.startsWith('data:')) dataLine += line.slice(5).trim();
-  }
-
-  if (eventType === 'done') {
-    return { type: 'done' };
-  }
-
-  if (!dataLine) {
-    return createProtocolError(`Received "${eventType}" SSE event without a data payload.`);
-  }
-
-  let data: unknown;
-  try {
-    data = JSON.parse(dataLine);
-  } catch {
-    return createProtocolError(`Received malformed JSON for "${eventType}" SSE event.`);
-  }
-
-  if (!data || typeof data !== 'object') {
-    return createProtocolError(`Received non-object payload for "${eventType}" SSE event.`);
-  }
-
-  const payload = data as Record<string, unknown>;
-
-  switch (eventType) {
-    case 'token':
-      if (typeof payload['token'] !== 'string') {
-        return createProtocolError('Token SSE event is missing a string "token" field.');
-      }
-      return { type: 'token', token: payload['token'] };
-    case 'tool_result':
-      if (typeof payload['toolName'] !== 'string' || !Array.isArray(payload['animals'])) {
-        return createProtocolError('Tool result SSE event is missing required fields.');
-      }
-      return { type: 'tool_result', toolName: payload['toolName'], animals: payload['animals'] as Animal[] };
-    case 'error':
-      if (typeof payload['code'] !== 'string' || typeof payload['message'] !== 'string') {
-        return createProtocolError('Error SSE event is missing required string fields.');
-      }
-      return { type: 'error', code: payload['code'], message: payload['message'] };
-    default:
-      return createProtocolError(`Received unsupported SSE event type "${eventType}".`);
-  }
-}
-
+/**
+ * Streams one concierge turn over the AG-UI protocol (`/api/agent?protocol=ag-ui`), executing any
+ * WebMCP tool calls the model requests in the browser via `ModelContextClient` — the same
+ * client-executed-tool pattern `AgentRunnerService` uses for the floating agent panel, but as its
+ * own instance so concierge's transcript never collides with that panel's.
+ *
+ * Exposes the same `ChatSseEvent` union the old hand-rolled SSE client did, so `Concierge`'s
+ * consumption code barely changes even though the transport underneath is a different protocol.
+ */
 @Service()
 export class ConciergeChatService {
-  /**
-   * Streams one /api/chat turn as our own event union. Every failure mode — including a
-   * cancellation-driven abort — resolves through `complete()`, never `error()`, so callers
-   * have exactly one place (the `error` event) to handle anything going wrong.
-   */
-  streamChat(message: string, sessionCounts: { admittedCount: number; adoptedCount: number }): Observable<ChatSseEvent> {
+  private readonly mcp = inject(ModelContextClient);
+  private readonly admittedAnimalsStore = inject(AdmittedAnimalsStore);
+  private readonly adoptedAnimalsStore = inject(AdoptedAnimalsStore);
+
+  private agent: HttpAgent | null = null;
+  private lastInteractionId?: string;
+
+  private async getAgent(): Promise<HttpAgent> {
+    if (!this.agent || (this.agent as any).abortController?.signal?.aborted) {
+      const { HttpAgent } = await import('@ag-ui/client');
+      this.agent = new HttpAgent({
+        url: '/api/agent?protocol=ag-ui',
+        headers: { 'x-ag-ui-protocol': 'true' },
+      });
+    } else {
+      (this.agent as any).abortController = new AbortController();
+    }
+    return this.agent;
+  }
+
+  /** Recomputes the exact matched animals for a `searchRoster` tool call, client-side and deterministically —
+   * no more guessing which animals Gemini's narration named (see the retired animal-match-filter.ts). */
+  private searchRosterAnimals(criteria: unknown): Animal[] {
+    const adoptedIds = new Set(this.adoptedAnimalsStore.adoptions().map((r) => r.animalId));
+    const all = clearedRoster(this.admittedAnimalsStore.admitted(), adoptedIds);
+    return matchRosterByCriteria(String(criteria ?? ''), all);
+  }
+
+  streamChat(message: string): Observable<ChatSseEvent> {
     return new Observable<ChatSseEvent>((subscriber) => {
-      const controller = new AbortController();
+      let cancelled = false;
+      let completed = false;
 
       (async () => {
         try {
-          const response = await fetch('/api/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message, ...sessionCounts }),
-            signal: controller.signal,
-          });
-
-          if (!response.ok || !response.body) {
-            subscriber.next({
-              type: 'error',
-              code: 'UPSTREAM_ERROR',
-              message: `Chat request failed with status ${response.status}`,
-            });
-            subscriber.complete();
-            return;
-          }
-
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
-          let buffer = '';
-
-          /** Emits a parsed record; returns true if the stream should stop (an error event ends it). */
-          const emitRecord = (raw: string): boolean => {
-            const parsed = parseSseRecord(raw);
-            subscriber.next(parsed);
-            return parsed.type === 'error';
+          const tools = (await this.mcp.listTools()).map((t) => this.mcp.toGeminiTool(t));
+          let turnInput: Record<string, unknown> = {
+            message,
+            tools,
+            protocol: 'ag-ui',
+            // Concierge composes its own deterministic AnimalCard/CustomChart surface from
+            // searchRoster's real results — opt out of Gemini also self-composing A2UI blocks,
+            // which would otherwise stream a raw ```a2ui fence into the visible chat bubble.
+            composeA2ui: false,
+            ...(this.lastInteractionId ? { previousInteractionId: this.lastInteractionId } : {}),
           };
 
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
+          for (let step = 0; step < MAX_STEPS && !cancelled; step++) {
+            const result = await this.runTurn(turnInput, subscriber);
+            if (cancelled) return;
 
-            let separatorIndex: number;
-            while ((separatorIndex = buffer.indexOf('\n\n')) !== -1) {
-              const rawEvent = buffer.slice(0, separatorIndex);
-              buffer = buffer.slice(separatorIndex + 2);
-              if (emitRecord(rawEvent)) {
-                subscriber.complete();
-                return;
-              }
+            if (result.error) {
+              completed = true;
+              subscriber.next({ type: 'error', code: 'UPSTREAM_ERROR', message: result.error });
+              subscriber.complete();
+              return;
             }
+            if (result.interactionId) {
+              this.lastInteractionId = result.interactionId;
+            }
+            if (!result.pendingToolCall) {
+              completed = true;
+              subscriber.next({ type: 'done' });
+              subscriber.complete();
+              return;
+            }
+
+            const { id, name, args, interactionId } = result.pendingToolCall;
+
+            if (name === 'searchRoster') {
+              subscriber.next({
+                type: 'tool_result',
+                toolName: name,
+                animals: this.searchRosterAnimals((args as { criteria?: unknown })?.criteria),
+              });
+            }
+
+            let toolResultText: string;
+            try {
+              toolResultText = await this.mcp.callTool(name, args);
+            } catch (err) {
+              toolResultText = `Tool "${name}" failed: ${err instanceof Error ? err.message : 'unknown error'}`;
+            }
+
+            turnInput = {
+              toolResult: { call_id: id, name, result: toolResultText },
+              previousInteractionId: interactionId || this.lastInteractionId,
+              tools,
+              protocol: 'ag-ui',
+              composeA2ui: false,
+            };
           }
 
-          if (buffer.trim() && emitRecord(buffer)) {
+          if (!cancelled) {
+            completed = true;
+            subscriber.next({
+              type: 'error',
+              code: 'MAX_STEPS_EXCEEDED',
+              message: 'The concierge reached the maximum tool execution steps.',
+            });
             subscriber.complete();
-            return;
           }
-
-          subscriber.complete();
         } catch (error) {
-          if (controller.signal.aborted) {
-            subscriber.complete();
-            return;
-          }
+          if (cancelled) return;
+          completed = true;
           subscriber.next({
             type: 'error',
             code: 'NETWORK_ERROR',
@@ -158,7 +168,93 @@ export class ConciergeChatService {
         }
       })();
 
-      return () => controller.abort();
+      return () => {
+        cancelled = true;
+        if (!completed) {
+          this.agent?.abortRun();
+        }
+      };
+    });
+  }
+
+  /** Runs one AG-UI turn, translating its event stream into our union and resolving with
+   * whatever the caller needs to decide the next step (another tool round, or done/error). */
+  private async runTurn(
+    input: Record<string, unknown>,
+    subscriber: { next: (e: ChatSseEvent) => void },
+  ): Promise<{
+    pendingToolCall?: { id: string; name: string; args: Record<string, unknown>; interactionId?: string };
+    error?: string;
+    interactionId?: string;
+  }> {
+    const agent = await this.getAgent();
+    return new Promise((resolve) => {
+      let pendingToolCall: { id: string; name: string; args: Record<string, unknown>; interactionId?: string } | undefined;
+      let toolArgsBuffer = '';
+      let turnError: string | undefined;
+      let turnInteractionId: string | undefined;
+
+      const subscription = agent.run(input as any).subscribe({
+        next: (event: BaseEvent) => {
+          switch (event.type) {
+            case EventType.TEXT_MESSAGE_CONTENT: {
+              const e = event as TextMessageContentEvent;
+              subscriber.next({ type: 'token', token: e.delta });
+              break;
+            }
+            case EventType.TOOL_CALL_START: {
+              const e = event as ToolCallStartEvent;
+              toolArgsBuffer = '';
+              const iid = (e as any).interactionId || (e as any).metadata?.interactionId;
+              if (iid) turnInteractionId = iid;
+              pendingToolCall = { id: e.toolCallId, name: e.toolCallName, args: {}, interactionId: iid };
+              break;
+            }
+            case EventType.TOOL_CALL_ARGS: {
+              const e = event as ToolCallArgsEvent;
+              toolArgsBuffer += e.delta;
+              break;
+            }
+            case EventType.TOOL_CALL_END: {
+              const e = event as ToolCallEndEvent;
+              if (pendingToolCall) {
+                try {
+                  pendingToolCall.args = JSON.parse(toolArgsBuffer || '{}');
+                } catch {
+                  pendingToolCall.args = {};
+                }
+              }
+              const iid = (e as any).interactionId || (e as any).metadata?.interactionId;
+              if (iid) turnInteractionId = iid;
+              break;
+            }
+            case EventType.RUN_FINISHED: {
+              // `interactionId` rides in as non-standard metadata (see agent.mts); RunFinishedEvent's
+              // typed `result`/`metadata` fields don't model it, so read it structurally.
+              const e = event as RunFinishedEvent & { metadata?: { interactionId?: string } };
+              const result = e.result as { interactionId?: string } | undefined;
+              const iid = result?.interactionId ?? e.metadata?.interactionId;
+              if (iid) turnInteractionId = iid;
+              break;
+            }
+            case EventType.RUN_ERROR: {
+              const e = event as RunErrorEvent;
+              turnError = e.message ?? 'Unknown agent error.';
+              break;
+            }
+          }
+        },
+        error: (err: unknown) => {
+          resolve({ error: err instanceof Error ? err.message : 'Agent stream failed.' });
+        },
+        complete: () => {
+          resolve({ pendingToolCall, error: turnError, interactionId: turnInteractionId });
+        },
+      });
+
+      // No external cancellation hook needed here: the outer Observable's teardown calls
+      // agent.abortRun(), which completes this inner subscription on its own.
+      void subscription;
     });
   }
 }

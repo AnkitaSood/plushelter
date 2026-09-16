@@ -30,7 +30,7 @@ function resolveModel(): string {
   return Netlify.env.get('GEMINI_TEST_MODEL') || 'gemini-3.1-flash-lite';
 }
 
-const SYSTEM_INSTRUCTION = `You are the in-browser agent for Plushelter, a stuffed-animal shelter app.
+const BASE_SYSTEM_INSTRUCTION = `You are the in-browser agent for Plushelter, a stuffed-animal shelter app.
 Your personality is warm, bureaucratic, and dead-serious about stuffed animal welfare.
 
 You can call page tools provided to you to answer the user:
@@ -38,6 +38,31 @@ You can call page tools provided to you to answer the user:
 - shelter stats & FAQ lookup
 - admitting an animal
 - submitting a surrender assessment
+
+Tool-calling rules:
+- Call searchRoster whenever the adopter describes what kind of companion they want (species,
+  temperament, size, or maintenance level) — never invent animals or their details. Always pass
+  the adopter's actual descriptive words as the \`criteria\` argument; never call searchRoster
+  with empty or missing criteria.
+- Call getShelterStats for any question about counts or numbers — how many animals, how many
+  adoptions, etc.
+- Call getSurrenderInfo whenever someone wants to give up, surrender, or hand over an animal.
+- Never invent numbers or advice for anything a tool exists for.
+- This is a fully digital shelter with no physical location or opening hours — say so if asked.
+- For small talk or general questions with no matching tool, respond directly, but if you
+  genuinely don't know the answer, say so instead of guessing.
+
+Rules:
+- Never make up animal details — use tool search results.
+- Keep text replies concise, official, and warm.
+- Ground every fact in tool results.`;
+
+/** Only appended for callers that want the model to compose its own generative surfaces
+ * (the agent panel, agent console). Callers who compose their own deterministic A2UI surfaces
+ * from tool results (e.g. concierge) opt out via `composeA2ui: false` — otherwise Gemini streams
+ * a raw ```a2ui fenced block as visible chat text before the server-side extraction step ever
+ * gets a chance to pull it out of the transcript. */
+const A2UI_COMPOSITION_INSTRUCTION = `
 
 When answering questions about animals or comparisons, you may compose generative A2UI v0.9 surfaces.
 To compose an A2UI surface, enclose a JSON array of A2uiMessages inside an \`\`\`a2ui ... \`\`\` code block.
@@ -82,12 +107,7 @@ Example A2UI block for a matched resident:
     }
   }
 ]
-\`\`\`
-
-Rules:
-- Never make up animal details — use tool search results.
-- Keep text replies concise, official, and warm.
-- Ground every fact in tool results.`;
+\`\`\``;
 
 class RateLimitedError extends Error {}
 
@@ -112,6 +132,10 @@ interface AgentRequestBody {
   protocol?: 'ag-ui' | 'legacy';
   threadId?: string;
   runId?: string;
+  /** Defaults to true (the agent panel/console rely on Gemini composing its own A2UI surfaces).
+   * Callers that compose their own deterministic surfaces from tool results — concierge — pass
+   * `false` so Gemini never streams a raw ```a2ui fence into visible chat text. */
+  composeA2ui?: boolean;
 }
 
 interface SseRecord {
@@ -483,6 +507,10 @@ export default async (req: Request) => {
 
         const model = resolveModel();
         const tools = body.tools ?? [];
+        const systemInstruction =
+          body.composeA2ui === false
+            ? BASE_SYSTEM_INSTRUCTION
+            : BASE_SYSTEM_INSTRUCTION + A2UI_COMPOSITION_INSTRUCTION;
 
         if (isAgUi) {
           controller.enqueue(
@@ -516,7 +544,7 @@ export default async (req: Request) => {
             input,
             previous_interaction_id: body.previousInteractionId,
             tools,
-            system_instruction: SYSTEM_INSTRUCTION,
+            system_instruction: systemInstruction,
           },
           (delta) => {
             accumulatedText += delta;

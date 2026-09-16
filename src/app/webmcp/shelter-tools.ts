@@ -130,6 +130,33 @@ export const animalDurationStatsTool: ShelterTool = {
   },
 };
 
+/** Words too short or too generic to usefully narrow a match on their own. */
+const CRITERIA_STOPWORDS = new Set([
+  'the', 'and', 'for', 'with', 'who', 'that', 'this', 'looking', 'someone', 'something', 'want', 'wants',
+]);
+
+export function matchRosterByCriteria(criteria: string, all: Animal[]): Animal[] {
+  // A whole-phrase substring match (the original approach) almost never hits, since a caller's
+  // criteria is rarely a verbatim excerpt of an animal's name/species/condition/backstory —
+  // tokenize into meaningful words and match on any overlap instead. Empty or stopword-only
+  // criteria yields no tokens, which correctly means "no match" rather than "match everyone".
+  const tokens = criteria
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter((w) => w.length >= 3 && !CRITERIA_STOPWORDS.has(w));
+  if (tokens.length === 0) return [];
+
+  return all.filter((a) => {
+    const haystack = `${a.name} ${a.species} ${a.condition} ${a.backstory}`.toLowerCase();
+    return tokens.some((token) => haystack.includes(token));
+  });
+}
+
+/** The cleared-for-placement, not-yet-adopted pool `searchRosterTool` and concierge both search over. */
+export function clearedRoster(admitted: Animal[], adoptedIds: Set<string>): Animal[] {
+  return [...MOCK_ANIMALS, ...admitted].filter((a) => a.available && !adoptedIds.has(a.id));
+}
+
 /** APP-LEVEL: available on every route. */
 export const searchRosterTool: ShelterTool = {
   name: 'searchRoster',
@@ -148,15 +175,37 @@ export const searchRosterTool: ShelterTool = {
     untrustedContentHint: false,
   },
   execute: (args) => {
-    const criteria = String((args as { criteria?: unknown })?.criteria ?? '').toLowerCase().trim();
+    const criteria = String((args as { criteria?: unknown })?.criteria ?? '');
     const adoptedIds = new Set(inject(AdoptedAnimalsStore).adoptions().map((r) => r.animalId));
-    const all = [...MOCK_ANIMALS, ...inject(AdmittedAnimalsStore).admitted()].filter(
-      (a) => a.available && !adoptedIds.has(a.id),
-    );
-    const matches = criteria
-      ? all.filter((a) => `${a.name} ${a.species} ${a.condition} ${a.backstory}`.toLowerCase().includes(criteria))
-      : all;
+    const all = clearedRoster(inject(AdmittedAnimalsStore).admitted(), adoptedIds);
+    const matches = matchRosterByCriteria(criteria, all);
     return text(matches.length ? matches.map(describe).join('\n') : 'No cleared animals match that description.');
+  },
+};
+
+/** APP-LEVEL: static shelter-policy lookup, no store dependency. Mirrors chat.mts's retired getSurrenderInfo. */
+export const getSurrenderInfoTool: ShelterTool = {
+  name: 'getSurrenderInfo',
+  description:
+    'Look up how an adopter surrenders a stuffed animal to the shelter. Call this whenever someone says they ' +
+    'want to give up, surrender, or hand over an animal — do not answer from general knowledge about donating toys.',
+  inputSchema: {
+    type: 'object',
+    properties: { animalName: { type: 'string', description: 'Name of the animal being surrendered, if mentioned.' } },
+    additionalProperties: false,
+  },
+  annotations: {
+    readOnlyHint: true,
+    consequentialHint: false,
+    untrustedContentHint: false,
+  },
+  execute: (args) => {
+    const animalName = (args as { animalName?: unknown })?.animalName;
+    return text(
+      "To surrender a stuffed animal, use the shelter's Intake Triage page — it walks through the animal's " +
+        'condition and assigns a huggability score before admitting it to the roster as an under-repair case.' +
+        (typeof animalName === 'string' && animalName ? ` (Regarding: ${animalName}.)` : ''),
+    );
   },
 };
 
@@ -297,6 +346,7 @@ export const APP_TOOLS: ShelterTool[] = [
   shelterStatsTool,
   animalDurationStatsTool,
   performCriticalMedicalProcedureTool,
+  getSurrenderInfoTool,
 ];
 
 /** Tools registered only on the /roster route (with auto-cleanup on navigation away). */
@@ -312,6 +362,7 @@ export const SHELTER_TOOL_REGISTRY: RegisteredTool[] = [
   { scope: 'Application', tool: shelterStatsTool },
   { scope: 'Application', tool: animalDurationStatsTool },
   { scope: 'Application', tool: performCriticalMedicalProcedureTool },
+  { scope: 'Application', tool: getSurrenderInfoTool },
   { scope: 'Route · /roster', tool: filterRosterBySpeciesTool },
   { scope: 'Service', tool: admitAnimalTool },
 ];

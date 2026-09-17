@@ -202,18 +202,55 @@ async function streamGeminiTurn(
 
   let interactionId: string | undefined;
   let functionCall: PendingFunctionCall | undefined;
+  let rawArguments = '';
 
   for await (const { event, data } of parseSseStream(response.body)) {
     if (event === 'step.start' && data.step?.type === 'function_call') {
       functionCall = {
         id: data.step.id,
         name: data.step.name,
-        arguments: data.step.arguments ?? {},
+        arguments: typeof data.step.arguments === 'object' && data.step.arguments !== null ? data.step.arguments : {},
       };
-    } else if (event === 'step.delta' && data.delta?.type === 'text') {
-      onToken(data.delta.text);
+      if (data.step.arguments) {
+        if (typeof data.step.arguments === 'object') {
+          rawArguments = JSON.stringify(data.step.arguments);
+        } else {
+          rawArguments = String(data.step.arguments);
+        }
+      }
+    } else if (event === 'step.delta') {
+      if (data.delta?.type === 'text') {
+        onToken(data.delta.text);
+      } else if (data.delta?.type === 'arguments') {
+        rawArguments += data.delta.partial_arguments ?? data.delta.arguments ?? '';
+      }
+    } else if (event === 'step.stop' && functionCall) {
+      if (data.step?.arguments) {
+        if (typeof data.step.arguments === 'object') {
+          functionCall.arguments = data.step.arguments;
+        } else {
+          try {
+            functionCall.arguments = JSON.parse(data.step.arguments);
+          } catch {
+            functionCall.arguments = { criteria: data.step.arguments };
+          }
+        }
+      } else if (rawArguments) {
+        try {
+          functionCall.arguments = JSON.parse(rawArguments);
+        } catch {
+          functionCall.arguments = { criteria: rawArguments };
+        }
+      }
     } else if (event === 'interaction.completed') {
       interactionId = data.interaction?.id;
+      if (functionCall && rawArguments && Object.keys(functionCall.arguments).length === 0) {
+        try {
+          functionCall.arguments = JSON.parse(rawArguments);
+        } catch {
+          functionCall.arguments = { criteria: rawArguments };
+        }
+      }
     }
   }
 

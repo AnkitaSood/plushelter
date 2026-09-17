@@ -44,7 +44,8 @@ function text(body: string): { content: { type: 'text'; text: string }[] } {
 }
 
 function describe(a: Animal): string {
-  return `${a.name} — ${a.species} (${a.condition})`;
+  const detail = a.backstory ? `: ${a.backstory}` : '';
+  return `${a.name} — ${a.species} (${a.condition})${detail}`;
 }
 
 export const animalDurationStatsTool: ShelterTool = {
@@ -133,22 +134,97 @@ export const animalDurationStatsTool: ShelterTool = {
 /** Words too short or too generic to usefully narrow a match on their own. */
 const CRITERIA_STOPWORDS = new Set([
   'the', 'and', 'for', 'with', 'who', 'that', 'this', 'looking', 'someone', 'something', 'want', 'wants',
+  'companion', 'companions', 'animal', 'animals', 'stuffy', 'stuffies', 'pet', 'pets', 'resident', 'residents',
+  'friend', 'friends', 'creature', 'creatures', 'one', 'ones', 'type', 'types',
 ]);
 
+/** Robustly extracts search criteria from raw tool arguments, accommodating varied property names from LLMs and serialized JSON strings. */
+export function extractCriteria(args: unknown): string {
+  if (!args) return '';
+  if (typeof args === 'string') {
+    const trimmed = args.trim();
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (typeof parsed === 'object' && parsed !== null) {
+          args = parsed;
+        } else {
+          return trimmed;
+        }
+      } catch {
+        return trimmed;
+      }
+    } else {
+      return trimmed;
+    }
+  }
+  if (typeof args === 'object' && args !== null) {
+    const obj = args as Record<string, unknown>;
+    const val =
+      obj['criteria'] ??
+      obj['query'] ??
+      obj['prompt'] ??
+      obj['search'] ??
+      obj['keywords'] ??
+      obj['filter'] ??
+      obj['temperament'] ??
+      obj['species'];
+    if (typeof val === 'string') return val.trim();
+    const stringVals = Object.values(obj).filter(
+      (v): v is string => typeof v === 'string' && v.trim().length > 0,
+    );
+    if (stringVals.length > 0) return stringVals[0].trim();
+  }
+  return '';
+}
+
+function matchesToken(haystack: string, token: string): boolean {
+  if (haystack.includes(token)) return true;
+  return token.endsWith('s') && token.length > 3 && haystack.includes(token.slice(0, -1));
+
+}
+
 export function matchRosterByCriteria(criteria: string, all: Animal[]): Animal[] {
-  // A whole-phrase substring match (the original approach) almost never hits, since a caller's
-  // criteria is rarely a verbatim excerpt of an animal's name/species/condition/backstory —
-  // tokenize into meaningful words and match on any overlap instead. Empty or stopword-only
-  // criteria yields no tokens, which correctly means "no match" rather than "match everyone".
-  const tokens = criteria
-    .toLowerCase()
-    .split(/[^a-z]+/)
+  const raw = criteria.toLowerCase().trim();
+  if (!raw) return [];
+
+  // Normalize hyphens and punctuation to spaces for flexible tokenization
+  const normalized = raw.replace(/[-_]+/g, ' ');
+  const tokens = normalized
+    .split(/[^a-z0-9]+/)
     .filter((w) => w.length >= 3 && !CRITERIA_STOPWORDS.has(w));
   if (tokens.length === 0) return [];
 
+  // If multiple tokens are provided (e.g. "low maintenance", "calm bear"), prefer animals
+  // matching all tokens so high-maintenance animals don't match on "maintenance" alone.
+  if (tokens.length > 1) {
+    const allTokenMatches = all.filter((a) => {
+      const haystack = `${a.name} ${a.species} ${a.condition} ${a.backstory}`
+        .toLowerCase()
+        .replace(/[-_]+/g, ' ');
+      return tokens.every((token) => matchesToken(haystack, token));
+    });
+    if (allTokenMatches.length > 0) {
+      // Sort exact phrase match first
+      return allTokenMatches.sort((a, b) => {
+        const aHaystack = `${a.name} ${a.species} ${a.condition} ${a.backstory}`
+          .toLowerCase()
+          .replace(/[-_]+/g, ' ');
+        const bHaystack = `${b.name} ${b.species} ${b.condition} ${b.backstory}`
+          .toLowerCase()
+          .replace(/[-_]+/g, ' ');
+        const aPhrase = aHaystack.includes(normalized) ? 1 : 0;
+        const bPhrase = bHaystack.includes(normalized) ? 1 : 0;
+        return bPhrase - aPhrase;
+      });
+    }
+  }
+
   return all.filter((a) => {
-    const haystack = `${a.name} ${a.species} ${a.condition} ${a.backstory}`.toLowerCase();
-    return tokens.some((token) => haystack.includes(token));
+    const haystack = `${a.name} ${a.species} ${a.condition} ${a.backstory}`
+      .toLowerCase()
+      .replace(/[-_]+/g, ' ');
+    return tokens.some((token) => matchesToken(haystack, token));
   });
 }
 
@@ -167,7 +243,7 @@ export const searchRosterTool: ShelterTool = {
     type: 'object',
     properties: { criteria: { type: 'string', description: 'What the adopter is looking for.' } },
     required: ['criteria'],
-    additionalProperties: false,
+    additionalProperties: true,
   },
   annotations: {
     readOnlyHint: true,
@@ -175,7 +251,7 @@ export const searchRosterTool: ShelterTool = {
     untrustedContentHint: false,
   },
   execute: (args) => {
-    const criteria = String((args as { criteria?: unknown })?.criteria ?? '');
+    const criteria = extractCriteria(args);
     const adoptedIds = new Set(inject(AdoptedAnimalsStore).adoptions().map((r) => r.animalId));
     const all = clearedRoster(inject(AdmittedAnimalsStore).admitted(), adoptedIds);
     const matches = matchRosterByCriteria(criteria, all);

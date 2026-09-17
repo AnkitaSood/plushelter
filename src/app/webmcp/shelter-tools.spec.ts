@@ -53,6 +53,41 @@ describe('shelter WebMCP tools', () => {
       const text = run(searchRosterTool, { criteria: 'bear' });
       expect(text).not.toContain(bear!.name);
     });
+
+    it('matches low-maintenance animals whether hyphenated or space-separated', () => {
+      const hyphenText = run(searchRosterTool, { criteria: 'low-maintenance' });
+      expect(hyphenText).toContain('Horace');
+      expect(hyphenText).toContain('Viola');
+      expect(hyphenText).toContain('Sabbatical');
+      expect(hyphenText).toContain('Misha');
+      expect(hyphenText).toContain('Shelley');
+      // Must include backstory so the model has grounding context
+      expect(hyphenText).toContain('institutional therapy');
+      // Must not match high-maintenance animals
+      expect(hyphenText).not.toContain('Ron');
+      expect(hyphenText).not.toContain('Jefferson');
+
+      const spaceText = run(searchRosterTool, { criteria: 'low maintenance' });
+      expect(spaceText).toContain('Horace');
+      expect(spaceText).not.toContain('Ron');
+
+      const companionText = run(searchRosterTool, { criteria: 'low-maintenance companion' });
+      expect(companionText).toContain('Horace');
+      expect(companionText).toContain('Viola');
+      expect(companionText).not.toContain('Ron');
+    });
+
+    it('accepts alternate property names like query or prompt from LLM calls', () => {
+      const queryText = run(searchRosterTool, { query: 'low-maintenance' });
+      expect(queryText).toContain('Horace');
+
+      const promptText = run(searchRosterTool, { prompt: 'octopus' });
+      expect(promptText).toContain('Viola');
+
+      // WebMCP executeTool passes JSON-serialized strings
+      const jsonStringText = run(searchRosterTool, '{"criteria":"low-maintenance"}');
+      expect(jsonStringText).toContain('Horace');
+    });
   });
 
   describe('getShelterStats', () => {

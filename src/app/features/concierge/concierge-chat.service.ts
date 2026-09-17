@@ -16,7 +16,7 @@ import type { Animal } from '../../data/roster';
 import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
 import { AdoptedAnimalsStore } from '../../data/adopted-animals-store';
 import { ModelContextClient } from '../../webmcp/model-context-client';
-import { clearedRoster, matchRosterByCriteria } from '../../webmcp/shelter-tools';
+import { clearedRoster, extractCriteria, matchRosterByCriteria } from '../../webmcp/shelter-tools';
 
 export interface ChatTokenEvent {
   type: 'token';
@@ -76,10 +76,11 @@ export class ConciergeChatService {
 
   /** Recomputes the exact matched animals for a `searchRoster` tool call, client-side and deterministically —
    * no more guessing which animals Gemini's narration named (see the retired animal-match-filter.ts). */
-  private searchRosterAnimals(criteria: unknown): Animal[] {
+  private searchRosterAnimals(args: unknown, fallbackMessage?: string): Animal[] {
+    const criteria = extractCriteria(args) || fallbackMessage || '';
     const adoptedIds = new Set(this.adoptedAnimalsStore.adoptions().map((r) => r.animalId));
     const all = clearedRoster(this.admittedAnimalsStore.admitted(), adoptedIds);
-    return matchRosterByCriteria(String(criteria ?? ''), all);
+    return matchRosterByCriteria(criteria, all);
   }
 
   streamChat(message: string): Observable<ChatSseEvent> {
@@ -127,13 +128,19 @@ export class ConciergeChatService {
               subscriber.next({
                 type: 'tool_result',
                 toolName: name,
-                animals: this.searchRosterAnimals((args as { criteria?: unknown })?.criteria),
+                animals: this.searchRosterAnimals(args, message),
               });
+            }
+
+            // Fallback to user message if tool arguments did not include criteria
+            let callArgs = args;
+            if (name === 'searchRoster' && !extractCriteria(args)) {
+              callArgs = { criteria: message };
             }
 
             let toolResultText: string;
             try {
-              toolResultText = await this.mcp.callTool(name, args);
+              toolResultText = await this.mcp.callTool(name, callArgs);
             } catch (err) {
               toolResultText = `Tool "${name}" failed: ${err instanceof Error ? err.message : 'unknown error'}`;
             }

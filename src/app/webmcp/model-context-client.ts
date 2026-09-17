@@ -121,11 +121,25 @@ export class ModelContextClient {
   /** List the tools registered for the CURRENT route (falls back to the static registry off-DOM). */
   async listTools(): Promise<WebMcpToolInfo[]> {
     const mc = getModelContext();
-    if (mc?.getTools) return await mc.getTools();
-    if (mc?.tools) return mc.tools;
+    if (mc?.getTools) {
+      try {
+        const tools = await mc.getTools();
+        if (tools && tools.length > 0) return tools;
+      } catch (e) {
+        console.warn('[ModelContextClient] mc.getTools failed, falling back to registry', e);
+      }
+    }
+    if (mc?.tools && mc.tools.length > 0) return mc.tools;
 
     const testing = getModelContextTesting();
-    if (testing?.listTools) return await testing.listTools();
+    if (testing?.listTools) {
+      try {
+        const tools = await testing.listTools();
+        if (tools && tools.length > 0) return tools;
+      } catch (e) {
+        console.warn('[ModelContextClient] testing.listTools failed, falling back to registry', e);
+      }
+    }
 
     return this.registryTools();
   }
@@ -137,32 +151,43 @@ export class ModelContextClient {
    */
   async callTool(name: string, args: unknown): Promise<string> {
     const mc = getModelContext();
-    if (mc?.callTool) return extractText(await mc.callTool(name, args));
+    if (mc?.callTool) {
+      try {
+        return extractText(await mc.callTool(name, args));
+      } catch (e) {
+        console.warn(`[ModelContextClient] mc.callTool("${name}") failed, falling back to registry`, e);
+      }
+    }
     if (mc?.executeTool) {
       // executeTool needs the actual RegisteredTool object from getTools(), not just its name.
       const tools = mc.getTools ? await mc.getTools() : mc.tools ?? [];
       const tool = tools.find((t) => t.name === name);
-      if (!tool) throw new Error(`Tool "${name}" is not registered on this page.`);
-
-      try {
-        return extractText(await mc.executeTool(tool, JSON.stringify(args ?? {})));
-      } catch (e) {
-        // The tool context is re-registered whenever Angular's provideExperimentalWebMcpTools
-        // recreates its providers (e.g. on route navigation). The browser WebMCP surface fires
-        // an AbortSignal on the old context mid-call. Fetch a fresh tool reference and retry once
-        // — by the time we're in this catch block the new context is already stable.
-        if (e instanceof DOMException && e.name === 'AbortError') {
-          const freshTools = mc.getTools ? await mc.getTools() : mc.tools ?? [];
-          const freshTool = freshTools.find((t) => t.name === name);
-          if (!freshTool) throw new Error(`Tool "${name}" unavailable after context refresh.`);
-          return extractText(await mc.executeTool(freshTool, JSON.stringify(args ?? {})));
+      if (tool) {
+        try {
+          return extractText(await mc.executeTool(tool, JSON.stringify(args ?? {})));
+        } catch (e) {
+          if (e instanceof DOMException && e.name === 'AbortError') {
+            const freshTools = mc.getTools ? await mc.getTools() : mc.tools ?? [];
+            const freshTool = freshTools.find((t) => t.name === name);
+            if (freshTool) {
+              return extractText(await mc.executeTool(freshTool, JSON.stringify(args ?? {})));
+            }
+          }
+          console.warn(`[ModelContextClient] mc.executeTool("${name}") failed, falling back to registry`, e);
         }
-        throw e;
+      } else {
+        console.warn(`[ModelContextClient] Tool "${name}" not found in mc tools, falling back to registry`);
       }
     }
 
     const testing = getModelContextTesting();
-    if (testing?.executeTool) return extractText(await testing.executeTool(name, args));
+    if (testing?.executeTool) {
+      try {
+        return extractText(await testing.executeTool(name, args));
+      } catch (e) {
+        console.warn(`[ModelContextClient] testing.executeTool("${name}") failed, falling back to registry`, e);
+      }
+    }
 
     return this.callFromRegistry(name, args);
   }

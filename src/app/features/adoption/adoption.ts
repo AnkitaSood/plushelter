@@ -174,7 +174,7 @@ import {
       align-items: flex-start;
       gap: var(--space-3);
       background: var(--color-celebration);
-      border: var(--border-width) solid var(--border-color);
+      border: var(--border-width) solid var(--color-ink-on-accent);
       border-radius: var(--radius-md);
       padding: var(--space-5);
       animation: certificate-reveal 0.3s ease-out both;

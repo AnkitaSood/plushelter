@@ -17,8 +17,9 @@ export type StatusBadgeStatus = 'available' | 'critical' | 'pending' | 'info' | 
       font-size: var(--text-xs);
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      color: var(--color-ink);
-      border: var(--border-width) solid var(--border-color);
+      /* Badge fills are always candy-light — fixed ink, same reasoning as Button. */
+      color: var(--color-ink-on-accent);
+      border: var(--border-width) solid var(--color-ink-on-accent);
       border-radius: var(--radius-sm);
       padding: var(--space-1) var(--space-2);
     }

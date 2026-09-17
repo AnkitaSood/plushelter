@@ -41,8 +41,9 @@ import { Component, input, model } from '@angular/core';
       content: '';
       width: 0.6rem;
       height: 0.35rem;
-      border-left: 2px solid var(--color-ink);
-      border-bottom: 2px solid var(--color-ink);
+      /* Drawn on the checked box's mint fill (always light) — fixed ink. */
+      border-left: 2px solid var(--color-ink-on-accent);
+      border-bottom: 2px solid var(--color-ink-on-accent);
       transform: rotate(-45deg) translateY(-1px);
       opacity: 0;
     }

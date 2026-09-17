@@ -67,8 +67,11 @@ export interface ConfirmDialogData {
       margin: var(--space-4) 0 0;
       padding: var(--space-3);
       background: var(--color-info);
-      border: var(--border-width) solid var(--border-color);
+      border: var(--border-width) solid var(--color-ink-on-accent);
       border-radius: var(--radius-sm);
+      /* Sits on the cyan info fill — fixed ink, overriding the inherited
+         theme-flipping ink from .confirm-dialog. */
+      color: var(--color-ink-on-accent);
     }
 
     .confirm-dialog__detail dt {

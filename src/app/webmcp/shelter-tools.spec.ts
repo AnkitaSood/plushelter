@@ -6,8 +6,10 @@ import {
   admitAnimalTool,
   animalDurationStatsTool,
   filterRosterBySpeciesTool,
+  performCriticalMedicalProcedureTool,
   searchRosterTool,
   shelterStatsTool,
+  SHELTER_TOOL_REGISTRY,
   type ShelterTool,
 } from './shelter-tools';
 
@@ -30,15 +32,14 @@ describe('shelter WebMCP tools', () => {
       expect(text).not.toContain('Kelly');
     });
 
-    it('falls back to all cleared animals when nothing matches', () => {
+    it('returns no matches for criteria that hits nothing', () => {
       const text = run(searchRosterTool, { criteria: 'zzz-no-such-thing' });
       expect(text).toBe('No cleared animals match that description.');
     });
 
-    it('lists all cleared animals for an empty criteria', () => {
+    it('returns no matches for empty criteria, rather than the whole roster', () => {
       const text = run(searchRosterTool, { criteria: '' });
-      const clearedCount = MOCK_ANIMALS.filter((a) => a.available).length;
-      expect(text.split('\n').length).toBe(clearedCount);
+      expect(text).toBe('No cleared animals match that description.');
     });
 
     it('excludes animals that have been adopted', () => {
@@ -51,6 +52,41 @@ describe('shelter WebMCP tools', () => {
 
       const text = run(searchRosterTool, { criteria: 'bear' });
       expect(text).not.toContain(bear!.name);
+    });
+
+    it('matches low-maintenance animals whether hyphenated or space-separated', () => {
+      const hyphenText = run(searchRosterTool, { criteria: 'low-maintenance' });
+      expect(hyphenText).toContain('Horace');
+      expect(hyphenText).toContain('Viola');
+      expect(hyphenText).toContain('Sabbatical');
+      expect(hyphenText).toContain('Misha');
+      expect(hyphenText).toContain('Shelley');
+      // Must include backstory so the model has grounding context
+      expect(hyphenText).toContain('institutional therapy');
+      // Must not match high-maintenance animals
+      expect(hyphenText).not.toContain('Ron');
+      expect(hyphenText).not.toContain('Jefferson');
+
+      const spaceText = run(searchRosterTool, { criteria: 'low maintenance' });
+      expect(spaceText).toContain('Horace');
+      expect(spaceText).not.toContain('Ron');
+
+      const companionText = run(searchRosterTool, { criteria: 'low-maintenance companion' });
+      expect(companionText).toContain('Horace');
+      expect(companionText).toContain('Viola');
+      expect(companionText).not.toContain('Ron');
+    });
+
+    it('accepts alternate property names like query or prompt from LLM calls', () => {
+      const queryText = run(searchRosterTool, { query: 'low-maintenance' });
+      expect(queryText).toContain('Horace');
+
+      const promptText = run(searchRosterTool, { prompt: 'octopus' });
+      expect(promptText).toContain('Viola');
+
+      // WebMCP executeTool passes JSON-serialized strings
+      const jsonStringText = run(searchRosterTool, '{"criteria":"low-maintenance"}');
+      expect(jsonStringText).toContain('Horace');
     });
   });
 
@@ -162,4 +198,59 @@ describe('shelter WebMCP tools', () => {
       expect(text).toContain('Elwyn');
     });
   });
+
+  describe('tool annotations', () => {
+    it('defines WebMCP annotations for all registered shelter tools', () => {
+      expect(SHELTER_TOOL_REGISTRY.length).toBeGreaterThan(0);
+      for (const entry of SHELTER_TOOL_REGISTRY) {
+        expect(entry.tool.annotations).toBeDefined();
+        expect(typeof entry.tool.annotations?.readOnlyHint).toBe('boolean');
+        expect(typeof entry.tool.annotations?.consequentialHint).toBe('boolean');
+        expect(typeof entry.tool.annotations?.untrustedContentHint).toBe('boolean');
+      }
+    });
+
+    it('marks read-only query tools with readOnlyHint: true and consequentialHint: false', () => {
+      expect(searchRosterTool.annotations).toEqual({
+        readOnlyHint: true,
+        consequentialHint: false,
+        untrustedContentHint: false,
+      });
+
+      expect(shelterStatsTool.annotations).toEqual({
+        readOnlyHint: true,
+        consequentialHint: false,
+        untrustedContentHint: false,
+      });
+
+      expect(animalDurationStatsTool.annotations).toEqual({
+        readOnlyHint: true,
+        consequentialHint: false,
+        untrustedContentHint: false,
+      });
+
+      expect(filterRosterBySpeciesTool.annotations).toEqual({
+        readOnlyHint: true,
+        consequentialHint: false,
+        untrustedContentHint: false,
+      });
+    });
+
+    it('marks state-mutating intake tool with readOnlyHint: false and consequentialHint: false', () => {
+      expect(admitAnimalTool.annotations).toEqual({
+        readOnlyHint: false,
+        consequentialHint: false,
+        untrustedContentHint: false,
+      });
+    });
+
+    it('marks high-stakes HITL clinical procedure with consequentialHint: true and readOnlyHint: false', () => {
+      expect(performCriticalMedicalProcedureTool.annotations).toEqual({
+        readOnlyHint: false,
+        consequentialHint: true,
+        untrustedContentHint: false,
+      });
+    });
+  });
 });
+

@@ -5,6 +5,11 @@
  */
 
 :root {
+  /* Tells the browser which native chrome to use (scrollbars, default
+     placeholder shade, unstyled parts of <select> popups) — otherwise those
+     stay light-mode even though every color we explicitly set has flipped. */
+  color-scheme: light;
+
   /* Palette — flat fills only, never a gradient between any two of these */
   --color-bg: #fffffc;
   --color-ink: #4a3f35;
@@ -16,6 +21,28 @@
   --color-badge: #fdffb6;
   --color-info: #9bf6ff;
   --color-celebration: #ffc6ff;
+
+  /*
+   * Secondary neutrals. Previously referenced throughout the app (roster,
+   * concierge, agent-panel, etc.) only as `var(--color-ink-muted, #666)` /
+   * `var(--color-bg-subtle, #eee)` with no real definition — every call site
+   * picked its own ad-hoc fallback. Defining them here gives one canonical,
+   * brand-tinted value and (critically for dark mode) something to redefine
+   * per theme instead of a hardcoded gray that would go unreadable at night.
+   */
+  --color-ink-muted: #6b5f52;
+  --color-bg-subtle: #f0ece3;
+  --color-muted: var(--color-bg-subtle);
+
+  /*
+   * Fixed stamp ink — deliberately does NOT flip between themes. Candy
+   * fills (buttons, badges, chat bubbles, celebration/status banners) are
+   * always light, in light mode AND dark mode: the clerk's ink stamp reads
+   * the same color on a night shift as a day shift. Anything drawing text
+   * or a border directly on top of a candy fill must use this token, never
+   * the theme-flipping --color-ink.
+   */
+  --color-ink-on-accent: #4a3f35;
 
   /* Typography */
   --font-display: 'Fredoka', sans-serif;
@@ -48,7 +75,9 @@
      "stacked paper" shadow at most. No blur, no glow. */
   --border-width: 2px;
   --border-color: var(--color-ink);
-  --shadow-stacked: 2px 2px 0 0 var(--color-ink);
+  /* Stamp ink, not semantic ink: the shadow is cast by the same ink stamp
+     regardless of theme, same reasoning as --color-ink-on-accent above. */
+  --shadow-stacked: 2px 2px 0 0 var(--color-ink-on-accent);
 
   --focus-ring-color: var(--color-primary);
   --focus-ring-width: 3px;
@@ -65,9 +94,29 @@
   --a2ui-color-background: var(--color-bg);        /* #fffffc — Form White */
   --a2ui-color-on-background: var(--color-ink);    /* #4a3f35 — Warm Stamp Brown */
   --a2ui-color-on-surface: var(--color-ink);       /* #4a3f35 */
-  --a2ui-color-on-secondary: var(--color-ink);     /* #4a3f35 */
+  /* on-secondary/on-primary render on top of the (always-light) lavender/
+     periwinkle fills, so — like button/badge text — they need the fixed
+     stamp ink, not the theme-flipping one, or dark mode makes them unreadable. */
+  --a2ui-color-on-secondary: var(--color-ink-on-accent);
   --a2ui-color-on-input: var(--color-ink);         /* #4a3f35 */
   --a2ui-color-border: var(--border-color);        /* #4a3f35 */
   --a2ui-color-primary: var(--color-primary);      /* #a0c4ff — Intake Periwinkle */
-  --a2ui-color-on-primary: var(--color-ink);       /* #4a3f35 */
+  --a2ui-color-on-primary: var(--color-ink-on-accent);
+}
+
+/*
+ * Dark theme — "Night Desk." Only the neutral layer flips: page background,
+ * primary ink, muted ink, and the subtle-inset neutral. Candy accents
+ * (primary/secondary/status/badge/info/celebration) and --color-ink-on-accent
+ * are intentionally absent here — per the Status Lock Rule they mean the same
+ * thing regardless of what shift the clerk is working, so they never change.
+ * Contrast verified: bg vs ink 13.8:1, bg vs ink-muted 7.7:1, bg vs every
+ * candy color 8.9:1+ (see ThemeService / theme-toggle for the switch itself).
+ */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-bg: #201b16;
+  --color-ink: #efe6d8;
+  --color-ink-muted: #b9ac98;
+  --color-bg-subtle: #2c2620;
 }

@@ -11,14 +11,11 @@ import { rxResource } from '@angular/core/rxjs-interop';
 import { scan, tap } from 'rxjs';
 import { SurfaceComponent, A2uiRendererService } from '@a2ui/angular/v0_9';
 import type { A2uiMessage } from '@a2ui/web_core/v0_9';
-import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
-import { AdoptedAnimalsStore } from '../../data/adopted-animals-store';
 import { Button } from '../../ui/button/button';
 import { ChatBubble } from '../../ui/chat-bubble/chat-bubble';
 import { CritterLoader } from '../../ui/critter-loader/critter-loader';
 import { FormField } from '../../ui/form-field/form-field';
 import { StatusBadge } from '../../ui/status-badge/status-badge';
-import { matchedAnimals } from './animal-match-filter';
 import { Animal, ChatSseEvent, ConciergeChatService } from './concierge-chat.service';
 import { SHELTER_CATALOG_ID } from '../../a2ui/shelter-catalog';
 
@@ -36,8 +33,6 @@ interface ChatStreamState {
 interface PendingChatRequest {
   message: string;
   requestId: number;
-  admittedCount: number;
-  adoptedCount: number;
 }
 
 let nextRequestId = 0;
@@ -53,87 +48,85 @@ const CANVAS_SURFACE_ID = 'concierge-canvas';
     SurfaceComponent,
   ],
   template: `
-    <div class="concierge-view">
-      <header class="concierge-view__header">
-        <h1>Adoption Concierge</h1>
-        <p class="concierge-view__sub">
-          Describe what you're looking for — the concierge will recommend matched companions
-          with interactive adoption cards below.
-        </p>
-      </header>
+    <header class="concierge-view__header">
+      <h1>Adoption Concierge</h1>
+      <p class="concierge-view__sub">
+        Describe what you're looking for — the concierge will recommend matched companions
+        with interactive adoption cards below.
+      </p>
+    </header>
 
-      <section class="concierge__panel" role="region" aria-label="Concierge conversation">
-        <!-- Scrollable content: chat bubbles + inline A2UI surface -->
-        <div class="concierge__transcript" role="log" aria-live="polite">
-          @if (history().length === 0 && !isStreaming()) {
-            <div class="concierge__empty">
-              <div class="empty-icon" aria-hidden="true">🧸</div>
-              <h2 class="empty-title">No Recommendations Yet</h2>
-              <p class="empty-text">
-                Start a conversation to see the concierge compose custom interactive cards,
-                compatibility gauges, and adoption buttons here.
-              </p>
-              <div class="empty-presets">
-                <span>Quick prompts:</span>
-                <button type="button" class="preset-pill" (click)="sendPreset('Low maintenance bears')">
-                  "Low maintenance bears."
-                </button>
-                <button type="button" class="preset-pill" (click)="sendPreset('Outdoorsy and active. High energy')">
-                  "Outdoorsy and active. High energy."
-                </button>
-              </div>
+    <section class="concierge__panel" role="region" aria-label="Concierge conversation">
+      <!-- Scrollable content: chat bubbles + inline A2UI surface -->
+      <div class="concierge__transcript" role="log" aria-live="polite">
+        @if (history().length === 0 && !isStreaming()) {
+          <div class="concierge__empty">
+            <div class="empty-icon" aria-hidden="true">🧸</div>
+            <h2 class="empty-title">No Recommendations Yet</h2>
+            <p class="empty-text">
+              Start a conversation to see the concierge compose custom interactive cards,
+              compatibility gauges, and adoption buttons here.
+            </p>
+            <div class="empty-presets">
+              <span>Quick prompts:</span>
+              <button type="button" class="preset-pill" (click)="sendPreset('Low maintenance bears')">
+                "Low maintenance bears."
+              </button>
+              <button type="button" class="preset-pill" (click)="sendPreset('Outdoorsy and active. High energy')">
+                "Outdoorsy and active. High energy."
+              </button>
             </div>
-          }
-
-          @for (turn of history(); track $index) {
-            <app-chat-bubble [role]="turn.role" [content]="turn.content" />
-          }
-
-          @if (isStreaming()) {
-            @if (streamingText(); as text) {
-              <app-chat-bubble role="concierge" [content]="text" />
-            } @else {
-              <app-critter-loader />
-            }
-          }
-
-          <!-- A2UI surface renders inline, directly after the reply -->
-          @if (hasActiveCanvas()) {
-            <div class="concierge__surface-block">
-              <div class="concierge__surface-bar">
-                <span class="concierge__surface-label">Matched companions</span>
-                <button
-                  type="button"
-                  class="concierge__surface-clear"
-                  (click)="clearCanvas()"
-                  aria-label="Clear matched companions"
-                >
-                  Clear
-                </button>
-              </div>
-              <a2ui-v09-surface [surfaceId]="canvasSurfaceId" />
-            </div>
-          }
-        </div>
-
-        @if (lastError(); as error) {
-          <app-status-badge status="critical">{{ error.message }}</app-status-badge>
+          </div>
         }
 
-        <!-- Composer pinned at the bottom of the single panel -->
-        <form class="concierge__composer" (submit)="onSubmit($event)">
-          <app-form-field
-            label="Message the concierge"
-            [(value)]="draft"
-            hint="Try: something low-maintenance for two kids"
-          />
-          <app-button type="submit" [disabled]="!canSend()">Send</app-button>
-        </form>
-      </section>
-    </div>
+        @for (turn of history(); track $index) {
+          <app-chat-bubble [role]="turn.role" [content]="turn.content"/>
+        }
+
+        @if (isStreaming()) {
+          @if (streamingText(); as text) {
+            <app-chat-bubble role="concierge" [content]="text"/>
+          } @else {
+            <app-critter-loader/>
+          }
+        }
+
+        <!-- A2UI surface renders inline, directly after the reply -->
+        @if (hasActiveCanvas()) {
+          <div class="concierge__surface-block">
+            <div class="concierge__surface-bar">
+              <span class="concierge__surface-label">Matched companions</span>
+              <button
+                type="button"
+                class="concierge__surface-clear"
+                (click)="clearCanvas()"
+                aria-label="Clear matched companions"
+              >
+                Clear
+              </button>
+            </div>
+            <a2ui-v09-surface [surfaceId]="canvasSurfaceId"/>
+          </div>
+        }
+      </div>
+
+      @if (lastError(); as error) {
+        <app-status-badge status="critical">{{ error.message }}</app-status-badge>
+      }
+
+      <!-- Composer pinned at the bottom of the single panel -->
+      <form class="concierge__composer" (submit)="onSubmit($event)">
+        <app-form-field
+          label="Message the concierge"
+          [(value)]="draft"
+          hint="Try: something low-maintenance for two kids"
+        />
+        <app-button type="submit" [disabled]="!canSend()">Send</app-button>
+      </form>
+    </section>
   `,
   styles: `
-    .concierge-view {
+    :host {
       display: flex;
       flex-direction: column;
       gap: var(--space-4);
@@ -236,6 +229,9 @@ const CANVAS_SURFACE_ID = 'concierge-canvas';
 
     .preset-pill:hover {
       background: var(--color-status-available);
+      /* Sits on the mint fill on hover — fixed ink and border. */
+      color: var(--color-ink-on-accent);
+      border-color: var(--color-ink-on-accent);
     }
 
     /* A2UI surface block — inline after the last reply bubble */
@@ -293,8 +289,6 @@ const CANVAS_SURFACE_ID = 'concierge-canvas';
 })
 export class Concierge implements OnDestroy {
   private readonly chatService = inject(ConciergeChatService);
-  private readonly admittedAnimalsStore = inject(AdmittedAnimalsStore);
-  private readonly adoptedAnimalsStore = inject(AdoptedAnimalsStore);
   private readonly a2ui = inject(A2uiRendererService);
 
   readonly canvasSurfaceId = CANVAS_SURFACE_ID;
@@ -304,9 +298,8 @@ export class Concierge implements OnDestroy {
   protected draft = signal('');
   protected history = signal<ChatTurn[]>([]);
   protected candidateAnimals = signal<Animal[]>([]);
-  protected lastReplyText = signal('');
   protected lastError = signal<{ code: string; message: string } | undefined>(undefined);
-  protected hasActiveCanvas = linkedSignal(() => this.matchedAnimals().length > 0);
+  protected hasActiveCanvas = linkedSignal(() => this.candidateAnimals().length > 0);
 
   private pendingRequest = signal<PendingChatRequest | undefined>(undefined);
 
@@ -315,20 +308,20 @@ export class Concierge implements OnDestroy {
     stream: ({ params }) => {
       let accumulatedText = '';
       return this.chatService
-        .streamChat(params.message, {
-          admittedCount: params.admittedCount,
-          adoptedCount: params.adoptedCount,
-        })
+        .streamChat(params.message)
         .pipe(
           tap((event) => {
             if (event.type === 'token') {
               accumulatedText += event.token;
             } else if (event.type === 'tool_result') {
+              // The exact matched Animal[] the searchRoster tool call produced client-side —
+              // no more guessing which animals the reply's prose named (see the retired
+              // animal-match-filter.ts) — so cards can render as soon as the tool resolves,
+              // even while narration is still streaming.
               this.candidateAnimals.set(event.animals);
             } else if (event.type === 'done') {
               if (accumulatedText) {
                 this.history.update((turns) => [...turns, { role: 'concierge', content: accumulatedText }]);
-                this.lastReplyText.set(accumulatedText);
               }
             } else if (event.type === 'error') {
               this.lastError.set({ code: event.code, message: event.message });
@@ -360,12 +353,11 @@ export class Concierge implements OnDestroy {
     return request !== undefined && !state?.done;
   });
   protected readonly canSend = computed(() => this.draft().trim().length > 0);
-  protected readonly matchedAnimals = matchedAnimals(this.candidateAnimals, this.lastReplyText);
 
   constructor() {
     // Reactive A2UI surface composition based on matched animals
     effect(() => {
-      const animals = this.matchedAnimals();
+      const animals = this.candidateAnimals();
       if (animals.length > 0) {
         this.renderOrUpdateCanvasSurface(animals);
       }
@@ -399,15 +391,9 @@ export class Concierge implements OnDestroy {
   private dispatchSend(message: string): void {
     this.history.update((turns) => [...turns, { role: 'user', content: message }]);
     this.candidateAnimals.set([]);
-    this.lastReplyText.set('');
     this.lastError.set(undefined);
     this.draft.set('');
-    this.pendingRequest.set({
-      message,
-      requestId: nextRequestId++,
-      admittedCount: this.admittedAnimalsStore.admitted().length,
-      adoptedCount: this.adoptedAnimalsStore.adoptions().length,
-    });
+    this.pendingRequest.set({ message, requestId: nextRequestId++ });
   }
 
   /**

@@ -16,9 +16,12 @@ import { Component, input } from '@angular/core';
       font-family: var(--font-display);
       font-size: var(--text-base);
       font-weight: 600;
-      color: var(--color-ink);
+      /* Fixed ink: the button fill (periwinkle/lavender) never darkens for
+         dark mode, so its text/border stay the fixed stamp ink, not the
+         theme-flipping --color-ink. */
+      color: var(--color-ink-on-accent);
       background: var(--color-primary);
-      border: var(--border-width) solid var(--border-color);
+      border: var(--border-width) solid var(--color-ink-on-accent);
       border-radius: var(--radius-md);
       box-shadow: var(--shadow-stacked);
       padding: var(--space-2) var(--space-4);

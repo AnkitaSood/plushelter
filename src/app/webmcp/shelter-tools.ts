@@ -16,7 +16,27 @@ import { HitlAuthorizationService } from './hitl-authorization.service';
  * (WebMCP does not guarantee the agent's args match the schema), which keeps these definitions
  * readable — the tradeoff the Angular docs' own "validate tool inputs" note calls for.
  */
-export type ShelterTool = WebMcpToolDescriptor<any>;
+export interface WebMcpToolAnnotations {
+  /**
+   * When true, indicates that the tool only reads information and does not modify
+   * the state of the application or system.
+   */
+  readOnlyHint?: boolean;
+  /**
+   * When true, indicates that the tool's output contains untrusted data from the
+   * perspective of the tool author (for example, user-generated content, reviews, or external web data).
+   */
+  untrustedContentHint?: boolean;
+  /**
+   * When true, indicates that executing the tool results in significant, real-world,
+   * or non-reversible actions.
+   */
+  consequentialHint?: boolean;
+}
+
+export type ShelterTool = WebMcpToolDescriptor<any> & {
+  annotations?: WebMcpToolAnnotations;
+};
 
 /** Every WebMCP tool returns MCP content blocks; ours are all plain text. */
 function text(body: string): { content: { type: 'text'; text: string }[] } {
@@ -24,7 +44,8 @@ function text(body: string): { content: { type: 'text'; text: string }[] } {
 }
 
 function describe(a: Animal): string {
-  return `${a.name} — ${a.species} (${a.condition})`;
+  const detail = a.backstory ? `: ${a.backstory}` : '';
+  return `${a.name} — ${a.species} (${a.condition})${detail}`;
 }
 
 export const animalDurationStatsTool: ShelterTool = {
@@ -48,6 +69,11 @@ export const animalDurationStatsTool: ShelterTool = {
       },
     },
     additionalProperties: true,
+  },
+  annotations: {
+    readOnlyHint: true,
+    consequentialHint: false,
+    untrustedContentHint: false,
   },
   execute: (args) => {
     const rawArgs = args ?? {};
@@ -105,6 +131,108 @@ export const animalDurationStatsTool: ShelterTool = {
   },
 };
 
+/** Words too short or too generic to usefully narrow a match on their own. */
+const CRITERIA_STOPWORDS = new Set([
+  'the', 'and', 'for', 'with', 'who', 'that', 'this', 'looking', 'someone', 'something', 'want', 'wants',
+  'companion', 'companions', 'animal', 'animals', 'stuffy', 'stuffies', 'pet', 'pets', 'resident', 'residents',
+  'friend', 'friends', 'creature', 'creatures', 'one', 'ones', 'type', 'types',
+]);
+
+/** Robustly extracts search criteria from raw tool arguments, accommodating varied property names from LLMs and serialized JSON strings. */
+export function extractCriteria(args: unknown): string {
+  if (!args) return '';
+  if (typeof args === 'string') {
+    const trimmed = args.trim();
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (typeof parsed === 'object' && parsed !== null) {
+          args = parsed;
+        } else {
+          return trimmed;
+        }
+      } catch {
+        return trimmed;
+      }
+    } else {
+      return trimmed;
+    }
+  }
+  if (typeof args === 'object' && args !== null) {
+    const obj = args as Record<string, unknown>;
+    const val =
+      obj['criteria'] ??
+      obj['query'] ??
+      obj['prompt'] ??
+      obj['search'] ??
+      obj['keywords'] ??
+      obj['filter'] ??
+      obj['temperament'] ??
+      obj['species'];
+    if (typeof val === 'string') return val.trim();
+    const stringVals = Object.values(obj).filter(
+      (v): v is string => typeof v === 'string' && v.trim().length > 0,
+    );
+    if (stringVals.length > 0) return stringVals[0].trim();
+  }
+  return '';
+}
+
+function matchesToken(haystack: string, token: string): boolean {
+  if (haystack.includes(token)) return true;
+  return token.endsWith('s') && token.length > 3 && haystack.includes(token.slice(0, -1));
+
+}
+
+export function matchRosterByCriteria(criteria: string, all: Animal[]): Animal[] {
+  const raw = criteria.toLowerCase().trim();
+  if (!raw) return [];
+
+  // Normalize hyphens and punctuation to spaces for flexible tokenization
+  const normalized = raw.replace(/[-_]+/g, ' ');
+  const tokens = normalized
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 3 && !CRITERIA_STOPWORDS.has(w));
+  if (tokens.length === 0) return [];
+
+  // If multiple tokens are provided (e.g. "low maintenance", "calm bear"), prefer animals
+  // matching all tokens so high-maintenance animals don't match on "maintenance" alone.
+  if (tokens.length > 1) {
+    const allTokenMatches = all.filter((a) => {
+      const haystack = `${a.name} ${a.species} ${a.condition} ${a.backstory}`
+        .toLowerCase()
+        .replace(/[-_]+/g, ' ');
+      return tokens.every((token) => matchesToken(haystack, token));
+    });
+    if (allTokenMatches.length > 0) {
+      // Sort exact phrase match first
+      return allTokenMatches.sort((a, b) => {
+        const aHaystack = `${a.name} ${a.species} ${a.condition} ${a.backstory}`
+          .toLowerCase()
+          .replace(/[-_]+/g, ' ');
+        const bHaystack = `${b.name} ${b.species} ${b.condition} ${b.backstory}`
+          .toLowerCase()
+          .replace(/[-_]+/g, ' ');
+        const aPhrase = aHaystack.includes(normalized) ? 1 : 0;
+        const bPhrase = bHaystack.includes(normalized) ? 1 : 0;
+        return bPhrase - aPhrase;
+      });
+    }
+  }
+
+  return all.filter((a) => {
+    const haystack = `${a.name} ${a.species} ${a.condition} ${a.backstory}`
+      .toLowerCase()
+      .replace(/[-_]+/g, ' ');
+    return tokens.some((token) => matchesToken(haystack, token));
+  });
+}
+
+/** The cleared-for-placement, not-yet-adopted pool `searchRosterTool` and concierge both search over. */
+export function clearedRoster(admitted: Animal[], adoptedIds: Set<string>): Animal[] {
+  return [...MOCK_ANIMALS, ...admitted].filter((a) => a.available && !adoptedIds.has(a.id));
+}
+
 /** APP-LEVEL: available on every route. */
 export const searchRosterTool: ShelterTool = {
   name: 'searchRoster',
@@ -115,18 +243,45 @@ export const searchRosterTool: ShelterTool = {
     type: 'object',
     properties: { criteria: { type: 'string', description: 'What the adopter is looking for.' } },
     required: ['criteria'],
-    additionalProperties: false,
+    additionalProperties: true,
+  },
+  annotations: {
+    readOnlyHint: true,
+    consequentialHint: false,
+    untrustedContentHint: false,
   },
   execute: (args) => {
-    const criteria = String((args as { criteria?: unknown })?.criteria ?? '').toLowerCase().trim();
+    const criteria = extractCriteria(args);
     const adoptedIds = new Set(inject(AdoptedAnimalsStore).adoptions().map((r) => r.animalId));
-    const all = [...MOCK_ANIMALS, ...inject(AdmittedAnimalsStore).admitted()].filter(
-      (a) => a.available && !adoptedIds.has(a.id),
-    );
-    const matches = criteria
-      ? all.filter((a) => `${a.name} ${a.species} ${a.condition} ${a.backstory}`.toLowerCase().includes(criteria))
-      : all;
+    const all = clearedRoster(inject(AdmittedAnimalsStore).admitted(), adoptedIds);
+    const matches = matchRosterByCriteria(criteria, all);
     return text(matches.length ? matches.map(describe).join('\n') : 'No cleared animals match that description.');
+  },
+};
+
+/** APP-LEVEL: static shelter-policy lookup, no store dependency. Mirrors chat.mts's retired getSurrenderInfo. */
+export const getSurrenderInfoTool: ShelterTool = {
+  name: 'getSurrenderInfo',
+  description:
+    'Look up how an adopter surrenders a stuffed animal to the shelter. Call this whenever someone says they ' +
+    'want to give up, surrender, or hand over an animal — do not answer from general knowledge about donating toys.',
+  inputSchema: {
+    type: 'object',
+    properties: { animalName: { type: 'string', description: 'Name of the animal being surrendered, if mentioned.' } },
+    additionalProperties: false,
+  },
+  annotations: {
+    readOnlyHint: true,
+    consequentialHint: false,
+    untrustedContentHint: false,
+  },
+  execute: (args) => {
+    const animalName = (args as { animalName?: unknown })?.animalName;
+    return text(
+      "To surrender a stuffed animal, use the shelter's Intake Triage page — it walks through the animal's " +
+        'condition and assigns a huggability score before admitting it to the roster as an under-repair case.' +
+        (typeof animalName === 'string' && animalName ? ` (Regarding: ${animalName}.)` : ''),
+    );
   },
 };
 
@@ -135,6 +290,11 @@ export const shelterStatsTool: ShelterTool = {
   name: 'getShelterStats',
   description: 'Report current shelter counts: total animals on file, cleared for placement, admitted this session, and adopted this session.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  annotations: {
+    readOnlyHint: true,
+    consequentialHint: false,
+    untrustedContentHint: false,
+  },
   execute: () => {
     const admitted = inject(AdmittedAnimalsStore).admitted();
     const adopted = inject(AdoptedAnimalsStore).adoptions();
@@ -156,6 +316,11 @@ export const filterRosterBySpeciesTool: ShelterTool = {
     properties: { species: { type: 'string', description: 'Exact species to filter by, e.g. "Bear".' } },
     required: ['species'],
     additionalProperties: false,
+  },
+  annotations: {
+    readOnlyHint: true,
+    consequentialHint: false,
+    untrustedContentHint: false,
   },
   execute: (args) => {
     const species = String((args as { species?: unknown })?.species ?? '').toLowerCase().trim();
@@ -182,6 +347,11 @@ export const admitAnimalTool: ShelterTool = {
     },
     required: ['name', 'species'],
     additionalProperties: false,
+  },
+  annotations: {
+    readOnlyHint: false,
+    consequentialHint: false,
+    untrustedContentHint: false,
   },
   execute: (args) => {
     const a = args as { name?: unknown; species?: unknown; condition?: unknown };
@@ -217,6 +387,11 @@ export const performCriticalMedicalProcedureTool: ShelterTool = {
     required: ['animalId', 'procedureName'],
     additionalProperties: false,
   },
+  annotations: {
+    readOnlyHint: false,
+    consequentialHint: true,
+    untrustedContentHint: false,
+  },
   execute: async (args) => {
     const a = args as { animalId?: unknown; procedureName?: unknown; estimatedStuffingLoss?: unknown; riskLevel?: unknown };
     const animalId = String(a?.animalId ?? '001');
@@ -247,6 +422,7 @@ export const APP_TOOLS: ShelterTool[] = [
   shelterStatsTool,
   animalDurationStatsTool,
   performCriticalMedicalProcedureTool,
+  getSurrenderInfoTool,
 ];
 
 /** Tools registered only on the /roster route (with auto-cleanup on navigation away). */
@@ -262,6 +438,7 @@ export const SHELTER_TOOL_REGISTRY: RegisteredTool[] = [
   { scope: 'Application', tool: shelterStatsTool },
   { scope: 'Application', tool: animalDurationStatsTool },
   { scope: 'Application', tool: performCriticalMedicalProcedureTool },
+  { scope: 'Application', tool: getSurrenderInfoTool },
   { scope: 'Route · /roster', tool: filterRosterBySpeciesTool },
   { scope: 'Service', tool: admitAnimalTool },
 ];

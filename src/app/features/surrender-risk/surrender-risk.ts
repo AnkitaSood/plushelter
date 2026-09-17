@@ -247,10 +247,12 @@ const RISK_SURFACE_ID = 'surrender-risk-report';
     .admission-banner {
       padding: var(--space-3);
       background: var(--color-celebration);
-      border: var(--border-width) solid var(--border-color);
+      border: var(--border-width) solid var(--color-ink-on-accent);
       border-radius: var(--radius-sm);
       font-size: var(--text-sm);
       margin-top: var(--space-2);
+      /* Sits on the pink fill — fixed ink, overriding the page's flipping ink. */
+      color: var(--color-ink-on-accent);
     }
 
     .risk-surface-pane {

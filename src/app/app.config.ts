@@ -1,11 +1,14 @@
 import {
   ApplicationConfig,
   inject,
-  provideBrowserGlobalErrorListeners, provideExperimentalWebMcpTools,
+  provideBrowserGlobalErrorListeners,
+  provideEnvironmentInitializer,
+  provideExperimentalWebMcpTools,
 } from '@angular/core';
 import { provideHttpClient } from '@angular/common/http';
 import { provideRouter, withExperimentalAutoCleanupInjectors } from '@angular/router';
 import { provideExperimentalWebMcpForms } from '@angular/forms/signals';
+import { provideCopilotKit } from '@copilotkit/angular';
 import {
   BasicCatalog,
   createComponentImplementation,
@@ -18,9 +21,9 @@ import {
   provideShelterMarkdownRenderer,
   ShelterButtonComponent,
 } from './a2ui/shelter-catalog';
-
+import { ShelterCopilotToolsService } from './copilotkit/copilotkit-tools';
 import { routes } from './app.routes';
-import {APP_TOOLS} from './webmcp/shelter-tools';
+import { APP_TOOLS } from './webmcp/shelter-tools';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -29,6 +32,8 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(),
     provideExperimentalWebMcpTools(APP_TOOLS),
     provideExperimentalWebMcpForms(),
+    provideCopilotKit({ runtimeUrl: '/api/copilotkit' }),
+    provideEnvironmentInitializer(() => void inject(ShelterCopilotToolsService)),
     provideShelterMarkdownRenderer(),
     provideA2Ui(() => {
       const dispatcher = inject(A2uiActionDispatcherService);

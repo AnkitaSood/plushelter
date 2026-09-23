@@ -1,5 +1,6 @@
 import { Service, computed, inject, signal } from '@angular/core';
-import type { HttpAgent } from '@ag-ui/client';
+import { CopilotKit, injectAgentStore } from '@copilotkit/angular';
+import { ShelterCopilotToolsService } from '../../copilotkit/copilotkit-tools';
 import {
   EventType,
   type ActivitySnapshotEvent,
@@ -12,9 +13,9 @@ import {
   type TextMessageStartEvent,
   type ToolCallArgsEvent,
   type ToolCallEndEvent,
+  type ToolCallResultEvent,
   type ToolCallStartEvent,
 } from '@ag-ui/core';
-import { GeminiToolDecl, ModelContextClient } from '../../webmcp/model-context-client';
 
 export type AgentEntry =
   | { kind: 'user'; id: number; text: string }
@@ -42,26 +43,12 @@ export interface AgUiStep {
   status: 'running' | 'completed';
 }
 
-const MAX_STEPS = 6;
-
 @Service()
 export class AgentRunnerService {
-  private readonly mcp = inject(ModelContextClient);
-  private agent: HttpAgent | null = null;
-  private lastInteractionId?: string;
-
-  private async getAgent(): Promise<HttpAgent> {
-    if (!this.agent || (this.agent as any).abortController?.signal?.aborted) {
-      const { HttpAgent } = await import('@ag-ui/client');
-      this.agent = new HttpAgent({
-        url: '/api/agent?protocol=ag-ui',
-        headers: { 'x-ag-ui-protocol': 'true' },
-      });
-    } else {
-      (this.agent as any).abortController = new AbortController();
-    }
-    return this.agent;
-  }
+  private readonly copilotKit = inject(CopilotKit);
+  private readonly agentStore = injectAgentStore('shelter-agent');
+  // Injecting ShelterCopilotToolsService registers frontend tools with CopilotKit and WebMCP
+  private readonly toolsService = inject(ShelterCopilotToolsService);
 
   // State signals exposed to UI
   private readonly _transcript = signal<AgentEntry[]>([]);
@@ -88,9 +75,37 @@ export class AgentRunnerService {
   readonly toolCalls = this._toolCalls.asReadonly();
 
   private nextId = 0;
+  private activeAssistantId: number | null = null;
+  private activeMessageId: string | null = null;
+  private toolNamesById = new Map<string, string>();
+
+  constructor() {
+    // Subscribe to the CopilotKit/AG-UI agent to reflect events in the transcript and panel signals
+    try {
+      const agent = this.agentStore().agent;
+      if (agent) {
+        agent.subscribe({
+          onEvent: ({ event }) => {
+            this.handleAgUiEvent(event);
+          },
+          onRunFailed: ({ error }) => {
+            this._error.set(error?.message ?? 'Agent execution error.');
+            this._status.set('error');
+          },
+          onRunFinalized: () => {
+            if (this._status() === 'running') {
+              this._status.set('idle');
+            }
+          },
+        });
+      }
+    } catch (err) {
+      console.warn('Could not subscribe to agent on initialization:', err);
+    }
+  }
 
   webMcpAvailable(): boolean {
-    return this.mcp.isWebMcpAvailable();
+    return typeof document !== 'undefined' && 'modelContext' in document;
   }
 
   private markToolCallExecuted(id: string): void {
@@ -100,8 +115,11 @@ export class AgentRunnerService {
   }
 
   cancel(): void {
-    this.agent?.abortRun();
-    this.agent = null;
+    try {
+      this.agentStore().agent?.abortRun();
+    } catch {
+      /* ignore */
+    }
     this._toolCalls.update((calls) =>
       calls.map((c) => (c.status === 'pending' ? { ...c, status: 'executed' } : c)),
     );
@@ -113,7 +131,6 @@ export class AgentRunnerService {
 
   reset(): void {
     this.cancel();
-    this.lastInteractionId = undefined;
     this._transcript.set([]);
     this._error.set(null);
     this._status.set('idle');
@@ -124,6 +141,9 @@ export class AgentRunnerService {
     this._reasoning.set('');
     this._steps.set([]);
     this._toolCalls.set([]);
+    this.activeAssistantId = null;
+    this.activeMessageId = null;
+    this.toolNamesById.clear();
   }
 
   async send(prompt: string): Promise<void> {
@@ -133,61 +153,25 @@ export class AgentRunnerService {
     this._error.set(null);
     this._status.set('running');
     this.appendTranscript({ kind: 'user', id: this.nextId++, text });
-    this._messages.update((msgs) => [...msgs, { id: `msg-${Date.now()}`, role: 'user', content: text }]);
+    this._messages.update((msgs) => [
+      ...msgs,
+      { id: `msg-${Date.now()}`, role: 'user', content: text },
+    ]);
 
     try {
-      const tools = (await this.mcp.listTools()).map((t) => this.mcp.toGeminiTool(t));
-      let turnInput: Record<string, unknown> = {
-        message: text,
-        tools,
-        protocol: 'ag-ui',
-        ...(this.lastInteractionId ? { previousInteractionId: this.lastInteractionId } : {}),
-      };
-
-      for (let step = 0; step < MAX_STEPS; step++) {
-        const turnResult = await this.runTurn(turnInput);
-        if (this._status() !== 'running') return;
-
-        if (turnResult.error) {
-          this._error.set(turnResult.error);
-          this._status.set('error');
-          return;
-        }
-
-        if (turnResult.interactionId) {
-          this.lastInteractionId = turnResult.interactionId;
-        }
-
-        if (!turnResult.pendingToolCall) {
-          this._status.set('idle');
-          return;
-        }
-
-        // Execute browser tool
-        const { id, name, args, interactionId } = turnResult.pendingToolCall;
-        this.markToolCallExecuted(id);
-        this.appendTranscript({ kind: 'tool_call', id: this.nextId++, name, args });
-        let result: string;
-        try {
-          result = await this.mcp.callTool(name, args);
-        } catch (err) {
-          result = `Tool "${name}" failed: ${err instanceof Error ? err.message : 'unknown error'}`;
-        }
-        this.appendTranscript({ kind: 'tool_result', id: this.nextId++, name, text: result });
-
-        turnInput = {
-          toolResult: { call_id: id, name, result },
-          previousInteractionId: interactionId || this.lastInteractionId,
-          tools,
-          protocol: 'ag-ui',
-        };
+      const agent = this.agentStore().agent;
+      if (!agent) {
+        throw new Error('CopilotKit agent is not available.');
       }
 
-      this._toolCalls.update((calls) =>
-        calls.map((c) => (c.status === 'pending' ? { ...c, status: 'executed' } : c)),
-      );
-      this._error.set('The agent reached the maximum tool execution steps.');
-      this._status.set('error');
+      agent.addMessage({
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: text,
+      });
+
+      await this.copilotKit.core.runAgent({ agent });
+      this._status.set('idle');
     } catch (err) {
       this._toolCalls.update((calls) =>
         calls.map((c) => (c.status === 'pending' ? { ...c, status: 'executed' } : c)),
@@ -197,153 +181,110 @@ export class AgentRunnerService {
     }
   }
 
-  private async runTurn(input: Record<string, unknown>): Promise<{
-    pendingToolCall?: { id: string; name: string; args: Record<string, unknown>; interactionId?: string };
-    error?: string;
-    interactionId?: string;
-  }> {
-    const agent = await this.getAgent();
-    return new Promise((resolve) => {
-      let activeAssistantId: number | null = null;
-      let activeMessageId: string | null = null;
-      let pendingToolCall: { id: string; name: string; args: Record<string, unknown>; interactionId?: string } | undefined;
-      let toolArgsBuffer = '';
-      let turnError: string | undefined;
-      let turnInteractionId: string | undefined;
-
-      const subscription = agent.run(input as any).subscribe({
-        next: (event: BaseEvent) => {
-          switch (event.type) {
-            case EventType.RUN_STARTED: {
-              const e = event as RunStartedEvent;
-              this._currentRun.set({ runId: e.runId, threadId: e.threadId });
-              break;
-            }
-            case EventType.TEXT_MESSAGE_START: {
-              const e = event as TextMessageStartEvent;
-              activeMessageId = e.messageId;
-              activeAssistantId = this.nextId++;
-              this.appendTranscript({ kind: 'assistant', id: activeAssistantId, text: '' });
-              this._messages.update((msgs) => [...msgs, { id: e.messageId, role: 'assistant', content: '' }]);
-              break;
-            }
-            case EventType.TEXT_MESSAGE_CONTENT: {
-              const e = event as TextMessageContentEvent;
-              if (activeAssistantId !== null) {
-                this.appendToken(activeAssistantId, e.delta);
-              }
-              if (activeMessageId !== null) {
-                this._messages.update((msgs) =>
-                  msgs.map((m) => (m.id === activeMessageId ? { ...m, content: m.content + e.delta } : m)),
-                );
-              }
-              break;
-            }
-            case EventType.TOOL_CALL_START: {
-              const e = event as ToolCallStartEvent;
-              toolArgsBuffer = '';
-              const iid = (e as any).interactionId || (e as any).metadata?.interactionId;
-              if (iid) {
-                turnInteractionId = iid;
-              }
-              pendingToolCall = {
-                id: e.toolCallId,
-                name: e.toolCallName,
-                args: {},
-                interactionId: iid,
-              };
-              this._toolCalls.update((calls) => [
-                ...calls,
-                { id: e.toolCallId, name: e.toolCallName, args: '', status: 'pending' },
-              ]);
-              break;
-            }
-            case EventType.TOOL_CALL_ARGS: {
-              const e = event as ToolCallArgsEvent;
-              toolArgsBuffer += e.delta;
-              this._toolCalls.update((calls) =>
-                calls.map((c) => (c.id === e.toolCallId ? { ...c, args: c.args + e.delta } : c)),
-              );
-              break;
-            }
-            case EventType.TOOL_CALL_END: {
-              const e = event as ToolCallEndEvent;
-              if (pendingToolCall) {
-                try {
-                  pendingToolCall.args = JSON.parse(toolArgsBuffer || '{}');
-                } catch {
-                  pendingToolCall.args = {};
-                }
-              }
-              const callId = e.toolCallId || pendingToolCall?.id;
-              if (callId) {
-                this.markToolCallExecuted(callId);
-              }
-              const iid = (e as any).interactionId || (e as any).metadata?.interactionId;
-              if (iid) {
-                turnInteractionId = iid;
-              }
-              break;
-            }
-            case EventType.ACTIVITY_SNAPSHOT: {
-              const e = event as ActivitySnapshotEvent;
-              this._activities.update((acts) => [...acts, e]);
-              break;
-            }
-            case EventType.STEP_STARTED: {
-              const e = event as StepStartedEvent;
-              this._steps.update((s) => [...s, { name: e.stepName, status: 'running' }]);
-              break;
-            }
-            case EventType.STEP_FINISHED: {
-              const e = event as StepFinishedEvent;
-              this._steps.update((s) =>
-                s.map((step) => (step.name === e.stepName ? { ...step, status: 'completed' } : step)),
-              );
-              break;
-            }
-            case EventType.REASONING_MESSAGE_CONTENT:
-            case EventType.THINKING_TEXT_MESSAGE_CONTENT: {
-              const e = event as any;
-              this._reasoning.update((r) => r + (e.delta ?? ''));
-              break;
-            }
-            case EventType.RUN_FINISHED: {
-              const e = event as any;
-              const iid =
-                e.result?.interactionId ||
-                e.metadata?.interactionId ||
-                e.interactionId;
-              if (iid) {
-                turnInteractionId = iid;
-              }
-              break;
-            }
-            case EventType.RUN_ERROR: {
-              const e = event as RunErrorEvent;
-              turnError = e.message;
-              break;
-            }
-          }
-        },
-        error: (err: unknown) => {
-          if (pendingToolCall) {
-            this.markToolCallExecuted(pendingToolCall.id);
-          }
-          resolve({ error: err instanceof Error ? err.message : 'Transport stream error' });
-        },
-        complete: () => {
-          if (pendingToolCall) {
-            this.markToolCallExecuted(pendingToolCall.id);
-          }
-          resolve({
-            pendingToolCall,
-            error: turnError,
-            interactionId: turnInteractionId || pendingToolCall?.interactionId,
-          });
-        },
-      });
-    });
+  private handleAgUiEvent(event: BaseEvent): void {
+    switch (event.type) {
+      case EventType.RUN_STARTED: {
+        const e = event as RunStartedEvent;
+        this._currentRun.set({ runId: e.runId, threadId: e.threadId });
+        this._status.set('running');
+        break;
+      }
+      case EventType.TEXT_MESSAGE_START: {
+        const e = event as TextMessageStartEvent;
+        this.activeMessageId = e.messageId;
+        this.activeAssistantId = this.nextId++;
+        this.appendTranscript({ kind: 'assistant', id: this.activeAssistantId, text: '' });
+        this._messages.update((msgs) => [
+          ...msgs,
+          { id: e.messageId, role: 'assistant', content: '' },
+        ]);
+        break;
+      }
+      case EventType.TEXT_MESSAGE_CONTENT: {
+        const e = event as TextMessageContentEvent;
+        if (this.activeAssistantId !== null) {
+          this.appendToken(this.activeAssistantId, e.delta);
+        }
+        if (this.activeMessageId !== null) {
+          this._messages.update((msgs) =>
+            msgs.map((m) => (m.id === this.activeMessageId ? { ...m, content: m.content + e.delta } : m)),
+          );
+        }
+        break;
+      }
+      case EventType.TOOL_CALL_START: {
+        const e = event as ToolCallStartEvent;
+        this.toolNamesById.set(e.toolCallId, e.toolCallName);
+        this._toolCalls.update((calls) => [
+          ...calls,
+          { id: e.toolCallId, name: e.toolCallName, args: '', status: 'pending' },
+        ]);
+        this.appendTranscript({
+          kind: 'tool_call',
+          id: this.nextId++,
+          name: e.toolCallName,
+          args: {},
+        });
+        break;
+      }
+      case EventType.TOOL_CALL_ARGS: {
+        const e = event as ToolCallArgsEvent;
+        this._toolCalls.update((calls) =>
+          calls.map((c) => (c.id === e.toolCallId ? { ...c, args: c.args + e.delta } : c)),
+        );
+        break;
+      }
+      case EventType.TOOL_CALL_END: {
+        const e = event as ToolCallEndEvent;
+        this.markToolCallExecuted(e.toolCallId);
+        break;
+      }
+      case EventType.TOOL_CALL_RESULT: {
+        const e = event as ToolCallResultEvent;
+        this.markToolCallExecuted(e.toolCallId);
+        const toolName = this.toolNamesById.get(e.toolCallId) ?? 'tool';
+        this.appendTranscript({
+          kind: 'tool_result',
+          id: this.nextId++,
+          name: toolName,
+          text: typeof e.content === 'string' ? e.content : JSON.stringify(e.content),
+        });
+        break;
+      }
+      case EventType.ACTIVITY_SNAPSHOT: {
+        const e = event as ActivitySnapshotEvent;
+        this._activities.update((acts) => [...acts, e]);
+        break;
+      }
+      case EventType.STEP_STARTED: {
+        const e = event as StepStartedEvent;
+        this._steps.update((s) => [...s, { name: e.stepName, status: 'running' }]);
+        break;
+      }
+      case EventType.STEP_FINISHED: {
+        const e = event as StepFinishedEvent;
+        this._steps.update((s) =>
+          s.map((step) => (step.name === e.stepName ? { ...step, status: 'completed' } : step)),
+        );
+        break;
+      }
+      case EventType.REASONING_MESSAGE_CONTENT:
+      case EventType.THINKING_TEXT_MESSAGE_CONTENT: {
+        const e = event as any;
+        this._reasoning.update((r) => r + (e.delta ?? ''));
+        break;
+      }
+      case EventType.RUN_FINISHED: {
+        this._status.set('idle');
+        break;
+      }
+      case EventType.RUN_ERROR: {
+        const e = event as RunErrorEvent;
+        this._error.set(e.message);
+        this._status.set('error');
+        break;
+      }
+    }
   }
 
   private appendTranscript(entry: AgentEntry): void {

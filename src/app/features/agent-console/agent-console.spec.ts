@@ -14,6 +14,8 @@ import { A2uiActionDispatcherService } from '../../a2ui/a2ui-action-dispatcher.s
 import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
 import { AdoptedAnimalsStore } from '../../data/adopted-animals-store';
 import { provideRouter } from '@angular/router';
+import { provideHttpClient } from '@angular/common/http';
+import { provideCopilotKit } from '@copilotkit/angular';
 
 describe('AgentConsole (Protocol Inspector: WebMCP + AG-UI + A2UI)', () => {
   let a2ui: A2uiRendererService;
@@ -26,6 +28,8 @@ describe('AgentConsole (Protocol Inspector: WebMCP + AG-UI + A2UI)', () => {
       imports: [AgentConsole],
       providers: [
         provideRouter([]),
+        provideHttpClient(),
+        provideCopilotKit({ runtimeUrl: '/api/copilotkit' }),
         provideShelterMarkdownRenderer(),
         provideA2Ui(() => ({
           catalogs: [new BasicCatalog(), createShelterCustomCatalog()],

@@ -142,10 +142,7 @@ export class SurrenderFlow {
   private readonly submitAttempted = signal(false);
   private readonly assessmentSubmissionError = signal<{ reason: string; message: string } | undefined>(undefined);
 
-  /** A plain Signal Form. Passing `experimentalWebMcpTool` derives a WebMCP tool
-   * (`submitSurrenderRequest`) from the model + validators — form-scoped, so the tool lives exactly
-   * as long as this component. A human fills it in, or an in-browser agent calls the generated tool;
-   * both route through `submission.action`. */
+  /** A plain Signal Form. A human fills it in and submits it; routes through `submission.action`. */
   protected readonly surrenderForm = form(
     this.model,
     (f) => {
@@ -155,13 +152,6 @@ export class SurrenderFlow {
       required(f.reason, { message: 'A reason for surrender is required.' });
     },
     {
-      experimentalWebMcpTool: {
-        name: 'submitSurrenderRequest',
-        description:
-          'File a stuffed-animal surrender request with the shelter. Provide the owner name, the ' +
-          'animal name, its species, its current condition, and the reason for surrender. The animal ' +
-          'is added to the roster with photos pending.',
-      },
       submission: {
         action: async (field) => {
           const request = field().value() as SurrenderRequest;

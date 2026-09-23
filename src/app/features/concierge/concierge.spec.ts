@@ -7,7 +7,6 @@ import { AdoptedAnimalsStore } from '../../data/adopted-animals-store';
 import {
   BasicCatalog,
   provideA2Ui,
-  A2uiRendererService,
 } from '@a2ui/angular/v0_9';
 import {
   createShelterCustomCatalog,
@@ -18,7 +17,6 @@ import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 
 describe('Concierge (A2UI Live Canvas)', () => {
-  let a2ui: A2uiRendererService;
   let chatServiceMock: { streamChat: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
@@ -43,8 +41,6 @@ describe('Concierge (A2UI Live Canvas)', () => {
         A2uiActionDispatcherService,
       ],
     }).compileComponents();
-
-    a2ui = TestBed.inject(A2uiRendererService);
   });
 
   it('initializes with empty transcript and no active canvas', () => {
@@ -54,6 +50,7 @@ describe('Concierge (A2UI Live Canvas)', () => {
 
     expect(component['history']()).toHaveLength(0);
     expect(component['hasActiveCanvas']()).toBe(false);
+    expect(component['canvasOperations']()).toHaveLength(0);
   });
 
   it('renders and updates the A2UI recommendation canvas when matched animals are found', () => {
@@ -79,21 +76,26 @@ describe('Concierge (A2UI Live Canvas)', () => {
 
     expect(component['hasActiveCanvas']()).toBe(true);
 
-    const surface = a2ui.surfaceGroup.getSurface(component.canvasSurfaceId);
-    expect(surface).toBeDefined();
+    const ops = component['canvasOperations']();
+    expect(ops.length).toBeGreaterThan(0);
+
+    const updateComp = ops.find((o) => o.updateComponents);
+    expect(updateComp).toBeDefined();
+
+    const comps = updateComp.updateComponents.components;
 
     // Verify components in the surface
-    const rootComp = surface?.componentsModel.get('root');
+    const rootComp = comps.find((c: any) => c.id === 'root');
     expect(rootComp).toBeDefined();
-    expect(rootComp?.type).toBe('Column');
+    expect(rootComp.component).toBe('Column');
 
-    const cardComp = surface?.componentsModel.get('card_001');
+    const cardComp = comps.find((c: any) => c.id === 'card_001');
     expect(cardComp).toBeDefined();
-    expect(cardComp?.type).toBe('AnimalCard');
+    expect(cardComp.component).toBe('AnimalCard');
 
-    const buttonComp = surface?.componentsModel.get('btn_001');
+    const buttonComp = comps.find((c: any) => c.id === 'btn_001');
     expect(buttonComp).toBeDefined();
-    expect(buttonComp?.type).toBe('Button');
+    expect(buttonComp.component).toBe('Button');
   });
 
   it('cleans up the canvas surface on component destruction', () => {
@@ -112,10 +114,10 @@ describe('Concierge (A2UI Live Canvas)', () => {
       },
     ]);
 
-    expect(a2ui.surfaceGroup.getSurface(component.canvasSurfaceId)).toBeDefined();
+    expect(component['canvasOperations']().length).toBeGreaterThan(0);
 
     fixture.destroy();
 
-    expect(a2ui.surfaceGroup.getSurface(component.canvasSurfaceId)).toBeUndefined();
+    expect(component['canvasOperations']()).toHaveLength(0);
   });
 });

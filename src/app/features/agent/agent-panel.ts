@@ -10,7 +10,6 @@ import {
   viewChild,
 } from '@angular/core';
 import { Button } from '../../ui/button/button';
-import { SurfaceComponent } from '@a2ui/angular/v0_9';
 import { AgentRunnerService } from './agent-runner.service';
 import { HitlAuthorizationService, HITL_SURFACE_ID } from '../../webmcp/hitl-authorization.service';
 
@@ -21,7 +20,7 @@ import { HitlAuthorizationService, HITL_SURFACE_ID } from '../../webmcp/hitl-aut
  */
 @Component({
   selector: 'app-agent-panel',
-  imports: [Button, SurfaceComponent],
+  imports: [Button],
   template: `
     <div class="dock" [style.top.px]="dockTop()">
       @if (open()) {
@@ -100,9 +99,17 @@ import { HitlAuthorizationService, HITL_SURFACE_ID } from '../../webmcp/hitl-aut
             <p class="panel__error" role="alert">{{ err }}</p>
           }
 
-          @if (hitl.pendingRequest()) {
+          @if (hitl.pendingRequest(); as req) {
             <div class="panel__hitl">
-              <a2ui-v09-surface [surfaceId]="hitlSurfaceId" />
+              <div class="hitl-box">
+                <div class="hitl-box__badge">AUTHORIZATION REQUIRED</div>
+                <h3 class="hitl-box__title">{{ req.procedureName }}</h3>
+                <p class="hitl-box__detail">Patient #{{ req.animalId }} &middot; {{ req.estimatedStuffingLoss }}</p>
+                <div class="hitl-box__actions">
+                  <app-button type="button" (click)="hitl.resolveDecision(true)">✓ Authorize</app-button>
+                  <app-button type="button" variant="secondary" (click)="hitl.resolveDecision(false, 'Denied by staff')">✕ Reject</app-button>
+                </div>
+              </div>
             </div>
           }
 
@@ -307,6 +314,40 @@ import { HitlAuthorizationService, HITL_SURFACE_ID } from '../../webmcp/hitl-aut
       border: 2px solid var(--color-status-critical);
       border-radius: var(--radius-md);
       overflow: hidden;
+    }
+
+    .hitl-box {
+      padding: var(--space-3);
+      background: var(--color-bg);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+    }
+
+    .hitl-box__badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--color-status-critical);
+      letter-spacing: 0.05em;
+    }
+
+    .hitl-box__title {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: var(--text-sm);
+    }
+
+    .hitl-box__detail {
+      margin: 0;
+      font-size: var(--text-xs);
+      color: var(--color-ink-muted, #555);
+    }
+
+    .hitl-box__actions {
+      display: flex;
+      gap: var(--space-2);
+      margin-top: var(--space-2);
     }
 
     .msg__args {

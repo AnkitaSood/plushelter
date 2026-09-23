@@ -5,7 +5,6 @@ import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
 import {
   BasicCatalog,
   provideA2Ui,
-  A2uiRendererService,
 } from '@a2ui/angular/v0_9';
 import {
   createShelterCustomCatalog,
@@ -15,7 +14,6 @@ import { A2uiActionDispatcherService } from '../../a2ui/a2ui-action-dispatcher.s
 import { provideRouter } from '@angular/router';
 
 describe('SurrenderRiskReport (A2UI Generative Assessment)', () => {
-  let a2ui: A2uiRendererService;
   let dispatcher: A2uiActionDispatcherService;
   let admittedStore: AdmittedAnimalsStore;
 
@@ -36,7 +34,6 @@ describe('SurrenderRiskReport (A2UI Generative Assessment)', () => {
       ],
     }).compileComponents();
 
-    a2ui = TestBed.inject(A2uiRendererService);
     dispatcher = TestBed.inject(A2uiActionDispatcherService);
     admittedStore = TestBed.inject(AdmittedAnimalsStore);
   });
@@ -48,6 +45,7 @@ describe('SurrenderRiskReport (A2UI Generative Assessment)', () => {
 
     expect(component['animalName']()).toBe('Barnaby the Bear');
     expect(component['hasReport']()).toBe(false);
+    expect(component['operations']()).toHaveLength(0);
   });
 
   it('generates an A2UI risk surface with RiskGauge, CustomChart, and AdoptionChecklist', () => {
@@ -60,26 +58,31 @@ describe('SurrenderRiskReport (A2UI Generative Assessment)', () => {
 
     expect(component['hasReport']()).toBe(true);
 
-    const surface = a2ui.surfaceGroup.getSurface(component.surfaceId);
-    expect(surface).toBeDefined();
+    const ops = component['operations']();
+    expect(ops.length).toBeGreaterThan(0);
 
     // Verify component composition
-    const gauge = surface?.componentsModel.get('guilt-gauge');
+    const updateCompOp = ops.find((op) => op.updateComponents);
+    expect(updateCompOp).toBeDefined();
+
+    const components = updateCompOp.updateComponents.components;
+    const gauge = components.find((c: any) => c.id === 'guilt-gauge');
     expect(gauge).toBeDefined();
-    expect(gauge?.type).toBe('RiskGauge');
+    expect(gauge.component).toBe('RiskGauge');
 
-    const chart = surface?.componentsModel.get('risk-chart');
+    const chart = components.find((c: any) => c.id === 'risk-chart');
     expect(chart).toBeDefined();
-    expect(chart?.type).toBe('CustomChart');
+    expect(chart.component).toBe('CustomChart');
 
-    const checklist = surface?.componentsModel.get('clinical-checklist');
+    const checklist = components.find((c: any) => c.id === 'clinical-checklist');
     expect(checklist).toBeDefined();
-    expect(checklist?.type).toBe('AdoptionChecklist');
+    expect(checklist.component).toBe('AdoptionChecklist');
 
     // Verify data model
-    const data = surface?.dataModel.get('/') as any;
-    expect(data.guiltScore).toBe(78);
-    expect(data.statusText).toContain('URGENT');
+    const dataOp = ops.find((op) => op.updateDataModel);
+    expect(dataOp).toBeDefined();
+    expect(dataOp.updateDataModel.value.guiltScore).toBe(78);
+    expect(dataOp.updateDataModel.value.statusText).toContain('URGENT');
   });
 
   it('admits the animal into AdmittedAnimalsStore when admit action is captured', () => {
@@ -108,9 +111,9 @@ describe('SurrenderRiskReport (A2UI Generative Assessment)', () => {
     fixture.detectChanges();
 
     component.generateReport();
-    expect(a2ui.surfaceGroup.getSurface(component.surfaceId)).toBeDefined();
+    expect(component['operations']().length).toBeGreaterThan(0);
 
     fixture.destroy();
-    expect(a2ui.surfaceGroup.getSurface(component.surfaceId)).toBeUndefined();
+    expect(component['operations']()).toHaveLength(0);
   });
 });

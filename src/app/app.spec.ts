@@ -1,10 +1,9 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { provideRouter } from '@angular/router';
+import { provideHttpClient } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
+import { provideCopilotKit } from '@copilotkit/angular';
 import { App } from './app';
-
-import { provideA2Ui } from '@a2ui/angular/v0_9';
-import { provideShelterMarkdownRenderer } from './a2ui/shelter-catalog';
 
 describe('App', () => {
   beforeEach(async () => {
@@ -15,8 +14,8 @@ describe('App', () => {
       providers: [
         provideZonelessChangeDetection(),
         provideRouter([]),
-        provideShelterMarkdownRenderer(),
-        provideA2Ui(() => ({ catalogs: [], actionHandler: () => {} })),
+        provideHttpClient(),
+        provideCopilotKit({ runtimeUrl: '/api/copilotkit' }),
       ],
     }).compileComponents();
   });

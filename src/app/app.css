@@ -39,7 +39,7 @@
   justify-content: space-between;
   padding: var(--space-3) var(--space-5);
   background: var(--color-bg);
-  border-bottom: var(--border-width) solid var(--border-color);
+  border-bottom: 1px solid var(--color-bg-subtle);
 }
 
 .app-nav__brand {
@@ -66,13 +66,17 @@
 
 .app-nav__links {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  align-items: stretch;
+  gap: var(--space-1);
 }
 
 .app-nav__link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
   font-family: var(--font-mono);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   font-weight: 400;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -80,27 +84,39 @@
   color: var(--color-ink);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
-  /* Underline indicator, not a filled pill — a filled periwinkle chip here
-     is visually identical to Button (same fill + ink + border language),
-     which reads as "clickable action" rather than "current page." Matches
-     the Intake/Surrender tablist's own selected-tab treatment. */
-  border-bottom: var(--border-width) solid transparent;
-  transition:
-    background 150ms ease-out,
-    border-color 150ms ease-out;
+  transition: background 150ms ease-out;
+}
+
+/* Underline indicator via pseudo-element — lives outside the box model
+   so it never changes the link's height or pushes siblings around. */
+.app-nav__link::after {
+  content: '';
+  position: absolute;
+  inset-inline: var(--space-3);
+  bottom: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background 150ms ease-out;
 }
 
 .app-nav__link:hover {
-  background: color-mix(in srgb, var(--color-primary) 25%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 15%, transparent);
 }
 
 .app-nav__link.is-active {
-  border-bottom-color: var(--color-primary);
-  font-weight: 600;
+  /* Use the same weight — no font-weight change means no width reflow.
+     Color alone is sufficient to signal the active page. */
+  color: var(--color-ink);
+}
+
+.app-nav__link.is-active::after {
+  background: var(--color-primary);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-nav__link {
+  .app-nav__link,
+  .app-nav__link::after {
     transition: none;
   }
 }

@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { scan, tap } from 'rxjs';
-import { SurfaceComponent, A2uiRendererService } from '@a2ui/angular/v0_9';
+import { CopilotA2uiSurfaceComponent } from '../../a2ui/copilot-a2ui-surface.component';
 import type { A2uiMessage } from '@a2ui/web_core/v0_9';
 import { Button } from '../../ui/button/button';
 import { ChatBubble } from '../../ui/chat-bubble/chat-bubble';
@@ -45,7 +45,7 @@ const CANVAS_SURFACE_ID = 'concierge-canvas';
     CritterLoader,
     FormField,
     StatusBadge,
-    SurfaceComponent,
+    CopilotA2uiSurfaceComponent,
   ],
   template: `
     <header class="concierge-view__header">
@@ -105,7 +105,7 @@ const CANVAS_SURFACE_ID = 'concierge-canvas';
                 Clear
               </button>
             </div>
-            <a2ui-v09-surface [surfaceId]="canvasSurfaceId"/>
+            <app-copilot-a2ui-surface [surfaceId]="canvasSurfaceId" [operations]="canvasOperations()"/>
           </div>
         }
       </div>
@@ -289,9 +289,9 @@ const CANVAS_SURFACE_ID = 'concierge-canvas';
 })
 export class Concierge implements OnDestroy {
   private readonly chatService = inject(ConciergeChatService);
-  private readonly a2ui = inject(A2uiRendererService);
 
   readonly canvasSurfaceId = CANVAS_SURFACE_ID;
+  protected readonly canvasOperations = signal<any[]>([]);
 
   private surfaceCreated = false;
 
@@ -369,10 +369,8 @@ export class Concierge implements OnDestroy {
   }
 
   clearCanvas(): void {
-    if (this.surfaceCreated) {
-      this.a2ui.surfaceGroup.deleteSurface(this.canvasSurfaceId);
-      this.surfaceCreated = false;
-    }
+    this.canvasOperations.set([]);
+    this.surfaceCreated = false;
     this.hasActiveCanvas.set(false);
   }
 
@@ -480,7 +478,7 @@ export class Concierge implements OnDestroy {
       },
     });
 
-    this.a2ui.processMessages(messages);
+    this.canvasOperations.set(messages);
     this.hasActiveCanvas.set(true);
   }
 

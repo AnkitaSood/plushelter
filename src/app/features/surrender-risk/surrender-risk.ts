@@ -7,19 +7,19 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { SurfaceComponent, A2uiRendererService } from '@a2ui/angular/v0_9';
-import type { A2uiMessage } from '@a2ui/web_core/v0_9';
+import { CopilotA2uiSurfaceComponent } from '../../a2ui/copilot-a2ui-surface.component';
 import { Button } from '../../ui/button/button';
 import { FormField } from '../../ui/form-field/form-field';
 import { SHELTER_CATALOG_ID } from '../../a2ui/shelter-catalog';
 import { A2uiActionDispatcherService } from '../../a2ui/a2ui-action-dispatcher.service';
 import { AdmittedAnimalsStore } from '../../data/admitted-animals-store';
+import type { A2uiMessage } from '@a2ui/web_core/v0_9';
 
 const RISK_SURFACE_ID = 'surrender-risk-report';
 
 @Component({
   selector: 'app-surrender-risk',
-  imports: [Button, FormField, SurfaceComponent],
+  imports: [Button, FormField, CopilotA2uiSurfaceComponent],
   template: `
     <div class="risk-report-view">
       <header class="risk-report-view__header">
@@ -119,7 +119,7 @@ const RISK_SURFACE_ID = 'surrender-risk-report';
 
           <div class="risk-surface-pane__content">
             @if (hasReport()) {
-              <a2ui-v09-surface [surfaceId]="surfaceId" />
+              <app-copilot-a2ui-surface [surfaceId]="surfaceId" [operations]="operations()" />
             } @else {
               <div class="empty-surface">
                 <div class="empty-icon" aria-hidden="true">📊</div>
@@ -321,7 +321,6 @@ const RISK_SURFACE_ID = 'surrender-risk-report';
   `,
 })
 export class SurrenderRiskReport implements OnInit, OnDestroy {
-  private readonly a2ui = inject(A2uiRendererService);
   private readonly dispatcher = inject(A2uiActionDispatcherService);
   private readonly admittedStore = inject(AdmittedAnimalsStore);
 
@@ -335,6 +334,7 @@ export class SurrenderRiskReport implements OnInit, OnDestroy {
 
   protected hasReport = signal(false);
   protected admissionSuccess = signal(false);
+  protected readonly operations = signal<any[]>([]);
 
   private surfaceInitialized = false;
   private unregisterActionHandler?: () => void;
@@ -366,10 +366,8 @@ export class SurrenderRiskReport implements OnInit, OnDestroy {
   }
 
   clearSurface(): void {
-    if (this.surfaceInitialized) {
-      this.a2ui.surfaceGroup.deleteSurface(this.surfaceId);
-      this.surfaceInitialized = false;
-    }
+    this.operations.set([]);
+    this.surfaceInitialized = false;
     this.hasReport.set(false);
   }
 
@@ -497,22 +495,20 @@ export class SurrenderRiskReport implements OnInit, OnDestroy {
       },
     });
 
-    this.a2ui.processMessages(messages);
+    this.operations.set(messages);
     this.hasReport.set(true);
   }
 
   private updateSurfaceDataModel(name: string, guilt: number, hug: number): void {
-    const messages: A2uiMessage[] = [
-      {
-        version: 'v0.9',
-        updateDataModel: {
-          surfaceId: this.surfaceId,
-          path: '/',
-          value: this.buildDataModel(name, guilt, hug),
-        },
+    const updateMsg = {
+      version: 'v0.9',
+      updateDataModel: {
+        surfaceId: this.surfaceId,
+        path: '/',
+        value: this.buildDataModel(name, guilt, hug),
       },
-    ];
-    this.a2ui.processMessages(messages);
+    };
+    this.operations.update((ops) => [...ops, updateMsg]);
   }
 
   private buildDataModel(name: string, guilt: number, hug: number): Record<string, unknown> {

@@ -24,21 +24,22 @@ export class A2uiActionDispatcherService {
     };
   }
 
-  dispatch(action: A2uiClientAction): void {
-    console.log('[A2UI Action]', action);
-    this._lastAction.set(action);
+  dispatch(action: A2uiClientAction | any): void {
+    const rawAction = action?.userAction ?? action;
+    console.log('[A2UI Action]', rawAction);
+    this._lastAction.set(rawAction);
 
     for (const listener of this.actionListeners) {
       try {
-        listener(action);
+        listener(rawAction);
       } catch (err) {
         console.error('[A2UI Action Listener Error]', err);
       }
     }
 
     // Built-in routing actions from A2UI generative surfaces
-    const actionName = action.name || (action as any).action;
-    const context = action.context || {};
+    const actionName = rawAction.name || rawAction.action;
+    const context = rawAction.context || {};
 
     if (actionName === 'start_adoption' && context['animalId']) {
       this.router.navigate(['/adopt'], { queryParams: { id: context['animalId'] } });

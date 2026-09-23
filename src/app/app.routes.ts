@@ -1,7 +1,7 @@
-import {Routes} from '@angular/router';
-import {inject, provideEnvironmentInitializer, provideExperimentalWebMcpTools} from '@angular/core';
-import {ROSTER_ROUTE_TOOLS} from './webmcp/shelter-tools';
-import {ShelterAgentService} from './webmcp/shelter-agent.service';
+import { Routes } from '@angular/router';
+import { inject, provideEnvironmentInitializer, provideExperimentalWebMcpTools } from '@angular/core';
+import { ROSTER_ROUTE_TOOLS } from './webmcp/shelter-tools';
+import { ShelterAgentService } from './webmcp/shelter-agent.service';
 
 export const routes: Routes = [
   {

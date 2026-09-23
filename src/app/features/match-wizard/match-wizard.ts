@@ -2,16 +2,15 @@ import {
   Component,
   OnDestroy,
   OnInit,
-  computed,
   effect,
   inject,
   resource,
   signal,
 } from '@angular/core';
-import { SurfaceComponent, A2uiRendererService } from '@a2ui/angular/v0_9';
 import type { A2uiClientAction, A2uiMessage } from '@a2ui/web_core/v0_9';
 import { SHELTER_CATALOG_ID } from '../../a2ui/shelter-catalog';
 import { A2uiActionDispatcherService } from '../../a2ui/a2ui-action-dispatcher.service';
+import { CopilotA2uiSurfaceComponent } from '../../a2ui/copilot-a2ui-surface.component';
 import { MOCK_ANIMALS } from '../../data/roster';
 import { Button } from '../../ui/button/button';
 
@@ -67,7 +66,7 @@ const WIZARD_SURFACE_ID = 'match-wizard-surface';
 
 @Component({
   selector: 'app-match-wizard',
-  imports: [ SurfaceComponent, Button],
+  imports: [Button, CopilotA2uiSurfaceComponent],
   template: `
     <div class="wizard-view">
       <header class="wizard-view__header">
@@ -91,7 +90,7 @@ const WIZARD_SURFACE_ID = 'match-wizard-surface';
         </header>
 
         <main class="wizard-canvas">
-          <a2ui-v09-surface [surfaceId]="surfaceId" />
+          <app-copilot-a2ui-surface [surfaceId]="surfaceId" [operations]="operations()" />
         </main>
       </div>
     </div>
@@ -183,10 +182,10 @@ const WIZARD_SURFACE_ID = 'match-wizard-surface';
   `,
 })
 export class AdaptiveMatchWizard implements OnInit, OnDestroy {
-  private readonly a2ui = inject(A2uiRendererService);
   private readonly dispatcher = inject(A2uiActionDispatcherService);
 
   readonly surfaceId = WIZARD_SURFACE_ID;
+  readonly operations = signal<any[]>([]);
 
   protected currentStep = signal<number>(1);
   private readonly livingValue = signal<string | undefined>(undefined);
@@ -209,16 +208,6 @@ export class AdaptiveMatchWizard implements OnInit, OnDestroy {
       return { step: params.step, data };
     },
   });
-
-  /** True while a Gemini call is in flight. */
-  protected readonly isLoading = computed(
-    () => this.wizardResource.isLoading(),
-  );
-
-  /** Non-null when the last fetch failed. */
-  protected readonly fetchError = computed(
-    () => this.wizardResource.error() as Error | undefined,
-  );
 
   private surfaceCreated = false;
   private unregisterActionHandler?: () => void;
@@ -265,8 +254,9 @@ export class AdaptiveMatchWizard implements OnInit, OnDestroy {
   }
 
   private handleAction(action: A2uiClientAction): void {
-    const actionName = action.name || (action as any).action;
-    const ctx = action.context || {};
+    const rawAction = (action as any)?.userAction ?? action;
+    const actionName = rawAction.name || rawAction.action;
+    const ctx = rawAction.context || {};
 
     if (actionName === 'select_living' && ctx['living']) {
       const living = String(ctx['living']);
@@ -286,13 +276,12 @@ export class AdaptiveMatchWizard implements OnInit, OnDestroy {
   }
 
   clearSurface(): void {
-    if (this.surfaceCreated) {
-      this.a2ui.surfaceGroup.deleteSurface(this.surfaceId);
-      this.surfaceCreated = false;
-    }
+    this.operations.set([]);
+    this.surfaceCreated = false;
   }
 
   resetWizard(): void {
+    this.clearSurface();
     this.livingValue.set(undefined);
     this.roleValue.set(undefined);
     this.currentStep.set(1);
@@ -302,15 +291,12 @@ export class AdaptiveMatchWizard implements OnInit, OnDestroy {
   // ─── Surface renderers ────────────────────────────────────────────────────
 
   private ensureSurface(): A2uiMessage[] {
-    const messages: A2uiMessage[] = [];
-    if (!this.surfaceCreated) {
-      messages.push({
+    return [
+      {
         version: 'v0.9',
         createSurface: { surfaceId: this.surfaceId, catalogId: SHELTER_CATALOG_ID },
-      });
-      this.surfaceCreated = true;
-    }
-    return messages;
+      },
+    ];
   }
 
   private renderLoadingState(): void {
@@ -336,7 +322,7 @@ export class AdaptiveMatchWizard implements OnInit, OnDestroy {
         ] as any,
       },
     });
-    this.a2ui.processMessages(messages);
+    this.operations.set(messages);
   }
 
   private renderErrorState(message: string): void {
@@ -362,7 +348,7 @@ export class AdaptiveMatchWizard implements OnInit, OnDestroy {
         ] as any,
       },
     });
-    this.a2ui.processMessages(messages);
+    this.operations.set(messages);
   }
 
   /**
@@ -404,7 +390,7 @@ export class AdaptiveMatchWizard implements OnInit, OnDestroy {
         ] as any,
       },
     });
-    this.a2ui.processMessages(messages);
+    this.operations.set(messages);
   }
 
   /**
@@ -482,6 +468,6 @@ export class AdaptiveMatchWizard implements OnInit, OnDestroy {
         ] as any,
       },
     });
-    this.a2ui.processMessages(messages);
+    this.operations.set(messages);
   }
 }

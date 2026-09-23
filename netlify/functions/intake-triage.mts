@@ -1,13 +1,12 @@
 import type { Context } from '@netlify/functions';
 import { isDemoMode, DEMO_RESPONSES } from '../shared/demo-mode.mts';
+import { getGeminiApiKey, getGeminiModel, createApiKeyMissingResponse } from '../shared/env.mts';
 
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/interactions';
 const GEMINI_API_REVISION = '2026-05-20';
 
-/** Demo model is gemini-3.5-flash (specs.md §5). Override via GEMINI_TEST_MODEL in .env.local
- * to point real-API test calls at a cheaper model without touching this file. */
 function resolveModel(): string {
-  return process.env.GEMINI_TEST_MODEL || Netlify.env?.get('GEMINI_TEST_MODEL') || 'gemini-3.1-flash-lite';
+  return getGeminiModel('gemini-3.1-flash-lite');
 }
 
 const CASE_FILE_SCHEMA = {
@@ -143,9 +142,9 @@ export default async (req: Request, context: Context) => {
       });
     }
 
-    const apiKey = Netlify.env.get('GEMINI_API_KEY');
+    const apiKey = getGeminiApiKey();
     if (!apiKey) {
-      throw new Error('GEMINI_API_KEY is not configured');
+      return createApiKeyMissingResponse('intake-triage');
     }
 
     const caseFile = await triagePhoto(apiKey, body.photoBase64, body.mimeType || 'image/jpeg', body.instructionText);

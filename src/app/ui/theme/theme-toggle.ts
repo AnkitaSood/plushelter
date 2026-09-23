@@ -2,81 +2,72 @@ import { Component, inject } from '@angular/core';
 import { ThemeService } from './theme.service';
 
 /**
- * Nav-level theme switch. A real checkbox under a switch-shaped visual layer —
- * same accessibility pattern as ChecklistItem — with the current/target state
- * spelled out in the label so the control's meaning never depends on color
- * alone ("Night Desk" while dark, "Day Desk" while light).
+ * Nav-level theme toggle — a compact icon button showing a half-moon (light →
+ * dark) or sun (dark → light).  Uses a real `<button>` with an `aria-label`
+ * that announces the action ("Switch to Night Desk" / "Switch to Day Desk").
  */
 @Component({
   selector: 'app-theme-toggle',
   template: `
-    <label class="theme-toggle">
-      <input
-        type="checkbox"
-        class="visually-hidden"
-        [checked]="theme.theme() === 'dark'"
-        (change)="theme.toggle()"
-      />
-      <span class="theme-toggle__track" aria-hidden="true">
-        <span class="theme-toggle__thumb"></span>
-      </span>
-      <span class="theme-toggle__label">{{ theme.theme() === 'dark' ? 'Night Desk' : 'Day Desk' }}</span>
-    </label>
+    <button
+      type="button"
+      class="theme-btn"
+      [attr.aria-label]="theme.theme() === 'dark' ? 'Switch to Day Desk' : 'Switch to Night Desk'"
+      (click)="theme.toggle()"
+    >
+      @if (theme.theme() === 'dark') {
+        <!-- Sun icon — current theme is dark, clicking switches to light -->
+        <svg class="theme-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="5" />
+          <line x1="12" y1="1"  x2="12" y2="3" />
+          <line x1="12" y1="21" x2="12" y2="23" />
+          <line x1="4.22" y1="4.22"  x2="5.64" y2="5.64" />
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+          <line x1="1"  y1="12" x2="3"  y2="12" />
+          <line x1="21" y1="12" x2="23" y2="12" />
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+          <line x1="18.36" y1="5.64"  x2="19.78" y2="4.22" />
+        </svg>
+      } @else {
+        <!-- Half-moon icon — current theme is light, clicking switches to dark -->
+        <svg class="theme-btn__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+      }
+    </button>
   `,
   styles: `
-    .theme-toggle {
+    .theme-btn {
       display: inline-flex;
       align-items: center;
-      gap: var(--space-2);
+      justify-content: center;
+      background: none;
+      border: none;
       cursor: pointer;
-      font-family: var(--font-mono);
-      font-size: var(--text-base);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--color-ink);
-      padding: var(--space-2) var(--space-3);
+      padding: var(--space-2);
       border-radius: var(--radius-sm);
-      border: var(--border-width) solid transparent;
+      color: var(--color-ink);
       transition: background 150ms ease-out;
     }
 
-    .theme-toggle:hover {
-      background: color-mix(in srgb, var(--color-primary) 25%, transparent);
+    .theme-btn:hover {
+      background: color-mix(in srgb, var(--color-primary) 15%, transparent);
     }
 
-    .theme-toggle__track {
-      position: relative;
-      width: 2.5rem;
-      height: 1.25rem;
-      flex-shrink: 0;
-      background: var(--color-bg);
-      border: var(--border-width) solid var(--border-color);
-      border-radius: var(--radius-md);
-    }
-
-    .theme-toggle__thumb {
-      position: absolute;
-      top: 1px;
-      left: 1px;
-      width: 0.75rem;
-      height: 0.75rem;
-      background: var(--color-ink);
-      border-radius: var(--radius-sm);
-      transition: transform 150ms ease-out;
-    }
-
-    .theme-toggle input:checked ~ .theme-toggle__track .theme-toggle__thumb {
-      transform: translateX(1.15rem);
-    }
-
-    .theme-toggle input:focus-visible ~ .theme-toggle__track {
+    .theme-btn:focus-visible {
       outline: var(--focus-ring-width) solid var(--focus-ring-color);
       outline-offset: 2px;
     }
 
+    .theme-btn__icon {
+      width: 1.25rem;
+      height: 1.25rem;
+    }
+
     @media (prefers-reduced-motion: reduce) {
-      .theme-toggle__thumb,
-      .theme-toggle {
+      .theme-btn {
         transition: none;
       }
     }
@@ -85,3 +76,4 @@ import { ThemeService } from './theme.service';
 export class ThemeToggle {
   protected readonly theme = inject(ThemeService);
 }
+

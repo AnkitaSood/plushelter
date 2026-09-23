@@ -4,7 +4,6 @@ import { AdaptiveMatchWizard } from './match-wizard';
 import {
   BasicCatalog,
   provideA2Ui,
-  A2uiRendererService,
 } from '@a2ui/angular/v0_9';
 import {
   createShelterCustomCatalog,
@@ -14,7 +13,6 @@ import { A2uiActionDispatcherService } from '../../a2ui/a2ui-action-dispatcher.s
 import { provideRouter } from '@angular/router';
 
 describe('AdaptiveMatchWizard (Dynamic Multi-Step A2UI Surface)', () => {
-  let a2ui: A2uiRendererService;
   let dispatcher: A2uiActionDispatcherService;
 
   beforeEach(async () => {
@@ -80,7 +78,6 @@ describe('AdaptiveMatchWizard (Dynamic Multi-Step A2UI Surface)', () => {
       ],
     }).compileComponents();
 
-    a2ui = TestBed.inject(A2uiRendererService);
     dispatcher = TestBed.inject(A2uiActionDispatcherService);
   });
 
@@ -97,14 +94,18 @@ describe('AdaptiveMatchWizard (Dynamic Multi-Step A2UI Surface)', () => {
 
     expect(component['currentStep']()).toBe(1);
 
-    const surface = a2ui.surfaceGroup.getSurface(component.surfaceId);
-    expect(surface).toBeDefined();
+    const ops = component['operations']();
+    expect(ops.length).toBeGreaterThan(0);
 
-    const title = surface?.componentsModel.get('title');
+    const updateComp = ops.find((o) => o.updateComponents);
+    expect(updateComp).toBeDefined();
+
+    const comps = updateComp.updateComponents.components;
+    const title = comps.find((c: any) => c.id === 'title');
     expect(title).toBeDefined();
-    expect(title?.properties['text']).toContain('Step 1');
+    expect(title.text?.literal ?? title.text).toContain('Step 1');
 
-    const studioOpt = surface?.componentsModel.get('opt-studio');
+    const studioOpt = comps.find((c: any) => c.id === 'opt-studio');
     expect(studioOpt).toBeDefined();
   });
 
@@ -126,10 +127,12 @@ describe('AdaptiveMatchWizard (Dynamic Multi-Step A2UI Surface)', () => {
 
     expect(component['currentStep']()).toBe(2);
 
-    const surface = a2ui.surfaceGroup.getSurface(component.surfaceId);
-    expect(surface).toBeDefined();
+    const ops = component['operations']();
+    const updateComp = ops.find((o) => o.updateComponents);
+    expect(updateComp).toBeDefined();
 
-    const duckOpt = surface?.componentsModel.get('opt-rubber-duck');
+    const comps = updateComp.updateComponents.components;
+    const duckOpt = comps.find((c: any) => c.id === 'opt-rubber-duck');
     expect(duckOpt).toBeDefined();
   });
 
@@ -158,16 +161,18 @@ describe('AdaptiveMatchWizard (Dynamic Multi-Step A2UI Surface)', () => {
 
     expect(component['currentStep']()).toBe(3);
 
-    const surface = a2ui.surfaceGroup.getSurface(component.surfaceId);
-    expect(surface).toBeDefined();
+    const ops = component['operations']();
+    const updateComp = ops.find((o) => o.updateComponents);
+    expect(updateComp).toBeDefined();
 
-    const card = surface?.componentsModel.get('animal-card');
+    const comps = updateComp.updateComponents.components;
+    const card = comps.find((c: any) => c.id === 'animal-card');
     expect(card).toBeDefined();
-    expect(card?.type).toBe('AnimalCard');
+    expect(card.component).toBe('AnimalCard');
 
-    const gauge = surface?.componentsModel.get('compatibility-gauge');
+    const gauge = comps.find((c: any) => c.id === 'compatibility-gauge');
     expect(gauge).toBeDefined();
-    expect(gauge?.type).toBe('RiskGauge');
+    expect(gauge.component).toBe('RiskGauge');
   });
 
   it('resets back to Step 1 when resetWizard() is called', async () => {
@@ -190,8 +195,11 @@ describe('AdaptiveMatchWizard (Dynamic Multi-Step A2UI Surface)', () => {
     fixture.detectChanges();
 
     expect(component['currentStep']()).toBe(1);
-    const surface = a2ui.surfaceGroup.getSurface(component.surfaceId);
-    expect(surface?.componentsModel.get('title')?.properties['text']).toContain('Step 1');
+    const ops = component['operations']();
+    const updateComp = ops.find((o) => o.updateComponents);
+    const comps = updateComp.updateComponents.components;
+    const title = comps.find((c: any) => c.id === 'title');
+    expect(title.text?.literal ?? title.text).toContain('Step 1');
   });
 
   it('cleans up surface on component destruction', () => {
@@ -199,10 +207,8 @@ describe('AdaptiveMatchWizard (Dynamic Multi-Step A2UI Surface)', () => {
     const component = fixture.componentInstance;
     fixture.detectChanges();
 
-    expect(a2ui.surfaceGroup.getSurface(component.surfaceId)).toBeDefined();
-
     fixture.destroy();
-    expect(a2ui.surfaceGroup.getSurface(component.surfaceId)).toBeUndefined();
+    expect(component['operations']()).toHaveLength(0);
   });
 
   it('does NOT trigger infinite fetch calls when selecting an option at step 2', async () => {
@@ -239,5 +245,41 @@ describe('AdaptiveMatchWizard (Dynamic Multi-Step A2UI Surface)', () => {
     await fixture.whenStable();
     expect(fetchCount).toBe(3); // Exactly ONE request for Step 3, not infinite
     expect(fixture.componentInstance['currentStep']()).toBe(3);
+  });
+
+  it('renders app-button components in the DOM and handles option click to advance steps', async () => {
+    const fixture = TestBed.createComponent(AdaptiveMatchWizard);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    const optionButtons = compiled.querySelectorAll<HTMLButtonElement>('app-copilot-a2ui-surface shelter-button button');
+    expect(optionButtons.length).toBe(3);
+    expect(optionButtons[0].textContent).toContain('Compact Studio');
+
+    // Click the first option button directly in the DOM
+    optionButtons[0].click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance['currentStep']()).toBe(2);
+
+    // Verify step 2 option buttons render in DOM
+    const step2Buttons = compiled.querySelectorAll<HTMLButtonElement>('app-copilot-a2ui-surface shelter-button button');
+    expect(step2Buttons.length).toBe(2);
+    expect(step2Buttons[0].textContent).toContain('Rubber Duck');
+
+    // Click step 2 option button
+    step2Buttons[0].click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance['currentStep']()).toBe(3);
+
+    // Verify final step renders the adoption button
+    const adoptButton = compiled.querySelector<HTMLButtonElement>('app-copilot-a2ui-surface shelter-button button');
+    expect(adoptButton).not.toBeNull();
+    expect(adoptButton?.textContent).toContain('Begin Official Adoption');
   });
 });

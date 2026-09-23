@@ -1,6 +1,7 @@
 import { isDemoMode, simulateTokenDelay, DEMO_RESPONSES } from '../shared/demo-mode.mts';
 import { AgUiEventType, formatAgUiSse, formatLegacySse } from '../shared/ag-ui.ts';
 import { validateA2uiMessages } from '../shared/a2ui-validator.ts';
+import { getGeminiApiKey, getGeminiModel, logAvailableEnvKeys } from '../shared/env.mts';
 
 /**
  * /api/agent — the streaming agent planner for Plushelter.
@@ -26,8 +27,34 @@ import { validateA2uiMessages } from '../shared/a2ui-validator.ts';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/interactions';
 const GEMINI_API_REVISION = '2026-05-20';
 
+function resolveEnv(name: string): string | undefined {
+  try {
+    if (typeof Netlify !== 'undefined' && Netlify.env) {
+      const val = Netlify.env.get(name);
+      if (val) return val;
+    }
+  } catch { /* ignore */ }
+  try {
+    if (typeof Deno !== 'undefined' && Deno.env) {
+      const val = Deno.env.get(name);
+      if (val) return val;
+    }
+  } catch { /* ignore */ }
+  try {
+    if (typeof process !== 'undefined' && process.env) {
+      const val = process.env[name];
+      if (val) return val;
+    }
+  } catch { /* ignore */ }
+  return undefined;
+}
+
+function resolveApiKey(): string | undefined {
+  return getGeminiApiKey();
+}
+
 function resolveModel(): string {
-  return Netlify.env.get('GEMINI_TEST_MODEL') || 'gemini-3.1-flash-lite';
+  return getGeminiModel('gemini-3.1-flash-lite');
 }
 
 const BASE_SYSTEM_INSTRUCTION = `You are the in-browser agent for Plushelter, a stuffed-animal shelter app.
@@ -537,9 +564,14 @@ export default async (req: Request) => {
           return;
         }
 
-        const apiKey = Netlify.env.get('GEMINI_API_KEY');
+        const apiKey = resolveApiKey();
         if (!apiKey) {
-          throw new Error('GEMINI_API_KEY is not configured');
+          logAvailableEnvKeys('agent');
+          throw new Error(
+            'GEMINI_API_KEY is not configured in Netlify environment variables. ' +
+            'If running locally with "netlify dev", run "npx netlify link" to link this repo to your Netlify site, ' +
+            'or add GEMINI_API_KEY=your_key to your local .env.local file.'
+          );
         }
 
         const model = resolveModel();

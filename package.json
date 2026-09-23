@@ -45,6 +45,8 @@
     "@angular/forms": "^22.1.4",
     "@angular/platform-browser": "^22.1.4",
     "@angular/router": "^22.1.4",
+    "@copilotkit/angular": "^0.5.2",
+    "@copilotkit/runtime": "^1.73.0",
     "@fontsource/fredoka": "^5.2.10",
     "@fontsource/karla": "^5.2.8",
     "@fontsource/space-mono": "^5.2.9",

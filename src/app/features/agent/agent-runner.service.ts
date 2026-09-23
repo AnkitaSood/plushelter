@@ -303,7 +303,7 @@ export class AgentRunnerService {
               break;
             }
             case EventType.REASONING_MESSAGE_CONTENT:
-            case EventType.THINKING_TEXT_MESSAGE_CONTENT: {
+            case EventType.TEXT_MESSAGE_CONTENT: {
               const e = event as any;
               this._reasoning.update((r) => r + (e.delta ?? ''));
               break;

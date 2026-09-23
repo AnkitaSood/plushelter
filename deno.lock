@@ -13,8 +13,8 @@
       "dependencies": [
         "npm:@a2ui/angular@~0.10.6",
         "npm:@a2ui/web_core@~0.10.7",
-        "npm:@ag-ui/client@^0.0.59",
-        "npm:@ag-ui/core@^0.0.59",
+        "npm:@ag-ui/client@1.0.0",
+        "npm:@ag-ui/core@1.0.0",
         "npm:@angular/aria@^22.2.0",
         "npm:@angular/build@^22.1.9",
         "npm:@angular/cdk@^22.2.0",

@@ -1,6 +1,6 @@
 import {Routes} from '@angular/router';
 import {inject, provideEnvironmentInitializer, provideExperimentalWebMcpTools} from '@angular/core';
-import {ROSTER_ROUTE_TOOLS} from './webmcp/shelter-tools';
+import {INTAKE_ROUTE_TOOLS, ROSTER_ROUTE_TOOLS} from './webmcp/shelter-tools';
 import {ShelterAgentService} from './webmcp/shelter-agent.service';
 
 export const routes: Routes = [
@@ -38,7 +38,10 @@ export const routes: Routes = [
   },
   {
     path: '',
-    providers: [provideEnvironmentInitializer(() => void inject(ShelterAgentService))],
+    providers: [
+      provideEnvironmentInitializer(() => void inject(ShelterAgentService)),
+      provideExperimentalWebMcpTools(INTAKE_ROUTE_TOOLS),
+    ],
     loadComponent: () => import('./features/intake-triage/intake-triage').then((m) => m.IntakeTriage),
   },
   {

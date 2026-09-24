@@ -401,21 +401,23 @@ export const performCriticalMedicalProcedureTool: ShelterTool = {
   },
 };
 
-/** Tools registered via `provideExperimentalWebMcpTools` on the app-tools parent route in
- * app.routes.ts — every route except /faq inherits these. */
+/** Tools registered via `provideExperimentalWebMcpTools` at the application root (appConfig) —
+ * available across general application routes (including /concierge and /roster). */
 export const APP_TOOLS: ShelterTool[] = [
   searchRosterTool,
   shelterStatsTool,
   animalDurationStatsTool,
-  performCriticalMedicalProcedureTool,
   getSurrenderInfoTool,
 ];
 
 /** Tools registered only on the /roster route (with auto-cleanup on navigation away). */
 export const ROSTER_ROUTE_TOOLS: ShelterTool[] = [filterRosterBySpeciesTool];
 
+/** Tools registered only on the intake triage / clinic route ('') (with auto-cleanup on navigation away). */
+export const INTAKE_ROUTE_TOOLS: ShelterTool[] = [performCriticalMedicalProcedureTool];
+
 export interface RegisteredTool {
-  scope: 'Application' | 'Route · /roster' | 'Service' | 'Signal Form';
+  scope: 'Application' | 'Route · /roster' | 'Route · Intake' | 'Service' | 'Signal Form';
   tool: ShelterTool;
 }
 
@@ -423,8 +425,8 @@ export const SHELTER_TOOL_REGISTRY: RegisteredTool[] = [
   { scope: 'Application', tool: searchRosterTool },
   { scope: 'Application', tool: shelterStatsTool },
   { scope: 'Application', tool: animalDurationStatsTool },
-  { scope: 'Application', tool: performCriticalMedicalProcedureTool },
   { scope: 'Application', tool: getSurrenderInfoTool },
+  { scope: 'Route · Intake', tool: performCriticalMedicalProcedureTool },
   { scope: 'Route · /roster', tool: filterRosterBySpeciesTool },
   { scope: 'Service', tool: admitAnimalTool },
 ];

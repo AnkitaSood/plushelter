@@ -475,6 +475,7 @@ export class AgentConsole implements OnDestroy {
       case 'Application':
         return 'info';
       case 'Route · /roster':
+      case 'Route · Intake':
         return 'pending';
       case 'Service':
         return 'available';

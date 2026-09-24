@@ -93,7 +93,13 @@ export class ConciergeChatService {
       (async () => {
         try {
           const rawTools = await this.mcp.listTools();
-          const tools = rawTools.map((t) => this.mcp.toGeminiTool(t));
+          const conciergeTools = rawTools.filter(
+            (t) =>
+              t.name !== 'performCriticalMedicalProcedure' &&
+              t.name !== 'admitAnimal' &&
+              t.name !== 'submitSurrenderRequest',
+          );
+          const tools = conciergeTools.map((t) => this.mcp.toGeminiTool(t));
           let turnInput: RunAgentInput = {
             threadId: this.threadId,
             runId: `run-${crypto.randomUUID()}`,

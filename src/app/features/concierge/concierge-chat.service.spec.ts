@@ -196,4 +196,52 @@ describe('ConciergeChatService (AG-UI 1.0 Client Transport)', () => {
     expect(toolResultEvent).toBeDefined();
     expect(toolResultEvent?.toolName).toBe('searchRoster');
   });
+
+  it('filters out clinical surgery and intake tools from the tool list forwarded to agent', async () => {
+    mockMcp.toGeminiTool.mockImplementation((t: any) => ({
+      type: 'function',
+      name: t.name,
+      description: t.description,
+      parameters: {},
+    }));
+    mockMcp.listTools.mockResolvedValue([
+      { name: 'searchRoster', description: 'Search', inputSchema: {} },
+      { name: 'performCriticalMedicalProcedure', description: 'Surgery', inputSchema: {} },
+      { name: 'admitAnimal', description: 'Admit', inputSchema: {} },
+      { name: 'submitSurrenderRequest', description: 'Surrender', inputSchema: {} },
+      { name: 'shelterStats', description: 'Stats', inputSchema: {} },
+    ]);
+
+    const runCalls: any[] = [];
+    vi.spyOn(service as any, 'getAgent').mockResolvedValue({
+      run: vi.fn().mockImplementation((input: any) => {
+        runCalls.push(input);
+        return new Observable((sub) => {
+          sub.next({
+            type: EventType.RUN_FINISHED,
+            runId: input.runId,
+            threadId: input.threadId,
+            outcome: { type: 'success' },
+          } as any);
+          sub.complete();
+        });
+      }),
+      abortRun: vi.fn(),
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      service.streamChat('hello').subscribe({
+        error: (err) => reject(err),
+        complete: () => resolve(),
+      });
+    });
+
+    expect(runCalls).toHaveLength(1);
+    const forwardedToolNames = runCalls[0].tools.map((t: any) => t.name);
+    expect(forwardedToolNames).toContain('searchRoster');
+    expect(forwardedToolNames).toContain('shelterStats');
+    expect(forwardedToolNames).not.toContain('performCriticalMedicalProcedure');
+    expect(forwardedToolNames).not.toContain('admitAnimal');
+    expect(forwardedToolNames).not.toContain('submitSurrenderRequest');
+  });
 });

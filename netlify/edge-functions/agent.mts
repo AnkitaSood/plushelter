@@ -41,9 +41,11 @@ You can call page tools provided to you to answer the user:
 
 Tool-calling rules:
 - Call searchRoster whenever the adopter describes what kind of companion they want (species,
-  temperament, size, or maintenance level) — never invent animals or their details. Always pass
-  the adopter's actual descriptive words as the \`criteria\` argument; never call searchRoster
-  with empty or missing criteria.
+  temperament, size, or maintenance level) or asks for a specific animal by name — never invent
+  animals or their details. Pass ONLY the words that describe the animal being sought as the
+  \`criteria\` argument (e.g. "Horace", "calm bear", "low-maintenance octopus"). Strip any
+  self-introduction ("my name is …") or intent phrasing ("I am ready to adopt") — those describe
+  the adopter, not the animal. Never call searchRoster with empty or missing criteria.
 - Call getShelterStats for any question about counts or numbers — how many animals, how many
   adoptions, etc.
 - Call getSurrenderInfo whenever someone wants to give up, surrender, or hand over an animal.

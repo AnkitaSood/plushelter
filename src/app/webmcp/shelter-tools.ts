@@ -117,11 +117,25 @@ export const animalDurationStatsTool: ShelterTool = {
   },
 };
 
-/** Words too short or too generic to usefully narrow a match on their own. */
+/** Words too short or too generic to usefully narrow a match on their own.
+ * Includes user-intent verbs (adopt, ready, find, get, like, need, etc.) that
+ * describe what the adopter wants to *do*, not what the animal *is* — these must
+ * be stripped before multi-token matching so they don't require the animal's data
+ * to literally contain "adopt" or "ready". */
 const CRITERIA_STOPWORDS = new Set([
-  'the', 'and', 'for', 'with', 'who', 'that', 'this', 'looking', 'someone', 'something', 'want', 'wants',
-  'companion', 'companions', 'animal', 'animals', 'stuffy', 'stuffies', 'pet', 'pets', 'resident', 'residents',
-  'friend', 'friends', 'creature', 'creatures', 'one', 'ones', 'type', 'types',
+  // Articles / conjunctions / pronouns
+  'the', 'and', 'for', 'with', 'who', 'that', 'this',
+  // Generic animal nouns
+  'companion', 'companions', 'animal', 'animals', 'stuffy', 'stuffies', 'pet', 'pets',
+  'resident', 'residents', 'friend', 'friends', 'creature', 'creatures', 'one', 'ones',
+  'type', 'types', 'something', 'someone',
+  // Conversational / self-referential words that describe the speaker, not the animal
+  'name', 'names', 'call', 'called', 'known',
+  // Intent / action verbs — describe what the user wants to do, not what the animal is
+  'adopt', 'adopting', 'adoption', 'ready', 'looking', 'find', 'finding',
+  'want', 'wants', 'wanted', 'like', 'likes', 'liked', 'need', 'needs', 'needed',
+  'get', 'getting', 'interested', 'seeking', 'seek', 'searching', 'search',
+  'hoping', 'hope', 'welcome', 'open',
 ]);
 
 /** Robustly extracts search criteria from raw tool arguments, accommodating varied property names from LLMs and serialized JSON strings. */

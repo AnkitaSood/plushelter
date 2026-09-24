@@ -4,6 +4,7 @@ import {
   EventType,
   type ActivitySnapshotEvent,
   type BaseEvent,
+  type RunAgentInput,
   type RunErrorEvent,
   type RunStartedEvent,
   type StepFinishedEvent,
@@ -49,6 +50,7 @@ export class AgentRunnerService {
   private readonly mcp = inject(ModelContextClient);
   private agent: HttpAgent | null = null;
   private lastInteractionId?: string;
+  private threadId = `thread-${crypto.randomUUID()}`;
 
   private async getAgent(): Promise<HttpAgent> {
     if (!this.agent || (this.agent as any).abortController?.signal?.aborted) {
@@ -113,6 +115,7 @@ export class AgentRunnerService {
 
   reset(): void {
     this.cancel();
+    this.threadId = `thread-${crypto.randomUUID()}`;
     this.lastInteractionId = undefined;
     this._transcript.set([]);
     this._error.set(null);
@@ -136,12 +139,23 @@ export class AgentRunnerService {
     this._messages.update((msgs) => [...msgs, { id: `msg-${Date.now()}`, role: 'user', content: text }]);
 
     try {
-      const tools = (await this.mcp.listTools()).map((t) => this.mcp.toGeminiTool(t));
-      let turnInput: Record<string, unknown> = {
-        message: text,
+      const rawTools = await this.mcp.listTools();
+      const tools = rawTools.map((t) => this.mcp.toGeminiTool(t));
+      let turnInput: RunAgentInput = {
+        threadId: this.threadId,
+        runId: `run-${crypto.randomUUID()}`,
+        messages: [
+          {
+            id: `msg-${Date.now()}`,
+            role: 'user',
+            content: text,
+          },
+        ],
         tools,
-        protocol: 'ag-ui',
-        ...(this.lastInteractionId ? { previousInteractionId: this.lastInteractionId } : {}),
+        context: [],
+        forwardedProps: {
+          ...(this.lastInteractionId ? { previousInteractionId: this.lastInteractionId } : {}),
+        },
       };
 
       for (let step = 0; step < MAX_STEPS; step++) {
@@ -176,10 +190,22 @@ export class AgentRunnerService {
         this.appendTranscript({ kind: 'tool_result', id: this.nextId++, name, text: result });
 
         turnInput = {
-          toolResult: { call_id: id, name, result },
-          previousInteractionId: interactionId || this.lastInteractionId,
+          threadId: this.threadId,
+          runId: `run-${crypto.randomUUID()}`,
+          messages: [
+            {
+              id: `msg-${crypto.randomUUID()}`,
+              role: 'tool',
+              toolCallId: id,
+              content: result,
+            },
+          ],
           tools,
-          protocol: 'ag-ui',
+          context: [],
+          forwardedProps: {
+            previousInteractionId: interactionId || this.lastInteractionId,
+            toolResult: { call_id: id, name, result },
+          },
         };
       }
 
@@ -197,7 +223,7 @@ export class AgentRunnerService {
     }
   }
 
-  private async runTurn(input: Record<string, unknown>): Promise<{
+  private async runTurn(input: RunAgentInput): Promise<{
     pendingToolCall?: { id: string; name: string; args: Record<string, unknown>; interactionId?: string };
     error?: string;
     interactionId?: string;
@@ -211,7 +237,7 @@ export class AgentRunnerService {
       let turnError: string | undefined;
       let turnInteractionId: string | undefined;
 
-      const subscription = agent.run(input as any).subscribe({
+      const subscription = agent.run(input).subscribe({
         next: (event: BaseEvent) => {
           switch (event.type) {
             case EventType.RUN_STARTED: {
@@ -302,8 +328,7 @@ export class AgentRunnerService {
               );
               break;
             }
-            case EventType.REASONING_MESSAGE_CONTENT:
-            case EventType.TEXT_MESSAGE_CONTENT: {
+            case EventType.REASONING_MESSAGE_CONTENT: {
               const e = event as any;
               this._reasoning.update((r) => r + (e.delta ?? ''));
               break;

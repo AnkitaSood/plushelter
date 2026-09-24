@@ -247,13 +247,13 @@ describe('AgentRunnerService (AG-UI Client Transport)', () => {
     await service.send('First question');
     expect(service.status()).toBe('idle');
     expect(service.error()).toBeNull();
-    expect(runCalls[0].previousInteractionId).toBeUndefined();
+    expect(runCalls[0].forwardedProps?.previousInteractionId).toBeUndefined();
 
     // Second user message - should continue with previousInteractionId without aborting
     await service.send('Second question');
     expect(service.status()).toBe('idle');
     expect(service.error()).toBeNull();
-    expect(runCalls[1].previousInteractionId).toBe('interaction-1');
+    expect(runCalls[1].forwardedProps?.previousInteractionId).toBe('interaction-1');
   });
 
   it('recovers after user cancellation and allows subsequent sends with fresh controller', async () => {

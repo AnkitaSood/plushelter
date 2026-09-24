@@ -1,6 +1,6 @@
 /**
  * AG-UI protocol event definitions and serialization helpers.
- * Aligned with @ag-ui/core@0.0.59.
+ * Aligned with @ag-ui/core@1.0.0 (AG-UI Protocol 1.0).
  */
 
 export enum AgUiEventType {
@@ -30,6 +30,11 @@ export enum AgUiEventType {
   REASONING_MESSAGE_START = 'REASONING_MESSAGE_START',
   REASONING_MESSAGE_CONTENT = 'REASONING_MESSAGE_CONTENT',
   REASONING_MESSAGE_END = 'REASONING_MESSAGE_END',
+  REASONING_MESSAGE_CHUNK = 'REASONING_MESSAGE_CHUNK',
+  REASONING_ENCRYPTED_VALUE = 'REASONING_ENCRYPTED_VALUE',
+  SUBAGENT_STARTED = 'SUBAGENT_STARTED',
+  SUBAGENT_FINISHED = 'SUBAGENT_FINISHED',
+  SUBAGENT_ERROR = 'SUBAGENT_ERROR',
   RAW = 'RAW',
   CUSTOM = 'CUSTOM',
 }
@@ -47,6 +52,8 @@ export interface RunStartedEvent extends AgUiBaseEvent {
   runId: string;
   threadId: string;
   parentRunId?: string;
+  protocolVersion?: string;
+  input?: unknown;
 }
 
 export interface RunFinishedEvent extends AgUiBaseEvent {
@@ -54,6 +61,10 @@ export interface RunFinishedEvent extends AgUiBaseEvent {
   runId: string;
   threadId: string;
   result?: unknown;
+  outcome?: {
+    type: 'success' | 'cancelled' | 'interrupt';
+    pendingToolCallIds?: string[];
+  };
 }
 
 export interface RunErrorEvent extends AgUiBaseEvent {

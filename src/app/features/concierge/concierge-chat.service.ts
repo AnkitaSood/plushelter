@@ -3,6 +3,7 @@ import { Observable } from 'rxjs';
 import {
   EventType,
   type BaseEvent,
+  type RunAgentInput,
   type RunErrorEvent,
   type RunFinishedEvent,
   type TextMessageContentEvent,
@@ -60,6 +61,7 @@ export class ConciergeChatService {
 
   private agent: HttpAgent | null = null;
   private lastInteractionId?: string;
+  private threadId = `thread-${crypto.randomUUID()}`;
 
   private async getAgent(): Promise<HttpAgent> {
     if (!this.agent || (this.agent as any).abortController?.signal?.aborted) {
@@ -90,16 +92,27 @@ export class ConciergeChatService {
 
       (async () => {
         try {
-          const tools = (await this.mcp.listTools()).map((t) => this.mcp.toGeminiTool(t));
-          let turnInput: Record<string, unknown> = {
-            message,
+          const rawTools = await this.mcp.listTools();
+          const tools = rawTools.map((t) => this.mcp.toGeminiTool(t));
+          let turnInput: RunAgentInput = {
+            threadId: this.threadId,
+            runId: `run-${crypto.randomUUID()}`,
+            messages: [
+              {
+                id: `msg-${crypto.randomUUID()}`,
+                role: 'user',
+                content: message,
+              },
+            ],
             tools,
-            protocol: 'ag-ui',
+            context: [],
             // Concierge composes its own deterministic AnimalCard/CustomChart surface from
             // searchRoster's real results — opt out of Gemini also self-composing A2UI blocks,
             // which would otherwise stream a raw ```a2ui fence into the visible chat bubble.
-            composeA2ui: false,
-            ...(this.lastInteractionId ? { previousInteractionId: this.lastInteractionId } : {}),
+            forwardedProps: {
+              composeA2ui: false,
+              ...(this.lastInteractionId ? { previousInteractionId: this.lastInteractionId } : {}),
+            },
           };
 
           for (let step = 0; step < MAX_STEPS && !cancelled; step++) {
@@ -146,11 +159,23 @@ export class ConciergeChatService {
             }
 
             turnInput = {
-              toolResult: { call_id: id, name, result: toolResultText },
-              previousInteractionId: interactionId || this.lastInteractionId,
+              threadId: this.threadId,
+              runId: `run-${crypto.randomUUID()}`,
+              messages: [
+                {
+                  id: `msg-${crypto.randomUUID()}`,
+                  role: 'tool',
+                  toolCallId: id,
+                  content: toolResultText,
+                },
+              ],
               tools,
-              protocol: 'ag-ui',
-              composeA2ui: false,
+              context: [],
+              forwardedProps: {
+                composeA2ui: false,
+                previousInteractionId: interactionId || this.lastInteractionId,
+                toolResult: { call_id: id, name, result: toolResultText },
+              },
             };
           }
 
@@ -187,7 +212,7 @@ export class ConciergeChatService {
   /** Runs one AG-UI turn, translating its event stream into our union and resolving with
    * whatever the caller needs to decide the next step (another tool round, or done/error). */
   private async runTurn(
-    input: Record<string, unknown>,
+    input: RunAgentInput,
     subscriber: { next: (e: ChatSseEvent) => void },
   ): Promise<{
     pendingToolCall?: { id: string; name: string; args: Record<string, unknown>; interactionId?: string };
@@ -201,7 +226,7 @@ export class ConciergeChatService {
       let turnError: string | undefined;
       let turnInteractionId: string | undefined;
 
-      const subscription = agent.run(input as any).subscribe({
+      const subscription = agent.run(input).subscribe({
         next: (event: BaseEvent) => {
           switch (event.type) {
             case EventType.TEXT_MESSAGE_CONTENT: {

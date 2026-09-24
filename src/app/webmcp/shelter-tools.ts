@@ -16,27 +16,13 @@ import { HitlAuthorizationService } from './hitl-authorization.service';
  * (WebMCP does not guarantee the agent's args match the schema), which keeps these definitions
  * readable — the tradeoff the Angular docs' own "validate tool inputs" note calls for.
  */
-export interface WebMcpToolAnnotations {
-  /**
-   * When true, indicates that the tool only reads information and does not modify
-   * the state of the application or system.
-   */
-  readOnlyHint?: boolean;
-  /**
-   * When true, indicates that the tool's output contains untrusted data from the
-   * perspective of the tool author (for example, user-generated content, reviews, or external web data).
-   */
-  untrustedContentHint?: boolean;
-  /**
-   * When true, indicates that executing the tool results in significant, real-world,
-   * or non-reversible actions.
-   */
-  consequentialHint?: boolean;
-}
+/**
+ * In Angular 22.2.0+, `WebMcpToolDescriptor` natively supports `annotations?: Annotations`
+ * (`readOnlyHint`, `untrustedContentHint`, `consequentialHint`).
+ */
+export type WebMcpToolAnnotations = NonNullable<WebMcpToolDescriptor<any>['annotations']>;
 
-export type ShelterTool = WebMcpToolDescriptor<any> & {
-  annotations?: WebMcpToolAnnotations;
-};
+export type ShelterTool = WebMcpToolDescriptor<any>;
 
 /** Every WebMCP tool returns MCP content blocks; ours are all plain text. */
 function text(body: string): { content: { type: 'text'; text: string }[] } {

@@ -81,7 +81,7 @@ interface LoggedAgUiEvent {
           <div class="pane-header">
             <h2>Registered WebMCP In-Browser Tools</h2>
             <p>
-              Tools declared to the browser's <code>navigator.modelContext</code>. Native AI agents
+              Tools declared to the browser's <code>document.modelContext</code>. Native AI agents
               invoke these tools directly in JavaScript — tool execution remains securely inside the client.
             </p>
           </div>
@@ -211,7 +211,7 @@ interface LoggedAgUiEvent {
     .console__head h1 { margin: 0 0 var(--space-1); font-family: var(--font-display); font-size: var(--text-2xl); }
     .console__intro { margin: 0; max-width: 70ch; color: var(--color-ink-muted, #555); }
     .console-tabs { display: flex; gap: var(--space-2); border-bottom: var(--border-width) solid var(--border-color); padding-bottom: var(--space-2); overflow-x: auto; }
-    .tab-btn { background: var(--color-bg); border: var(--border-width) solid var(--border-color); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: bold; cursor: pointer; box-shadow: var(--shadow-flat); }
+    .tab-btn { background: var(--color-bg); border: var(--border-width) solid var(--border-color); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); font-family: var(--font-mono); font-size: var(--text-xs); font-weight: bold; cursor: pointer; }
     .tab-btn--active { background: var(--color-ink); color: var(--color-bg); box-shadow: var(--shadow-stacked); }
     .tab-pane { display: flex; flex-direction: column; gap: var(--space-4); }
     .pane-header h2 { margin: 0 0 var(--space-1); font-family: var(--font-display); font-size: var(--text-xl); }

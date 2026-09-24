@@ -4,7 +4,7 @@ import {
   provideBrowserGlobalErrorListeners, provideExperimentalWebMcpTools,
 } from '@angular/core';
 import { provideHttpClient } from '@angular/common/http';
-import { provideRouter, withExperimentalAutoCleanupInjectors } from '@angular/router';
+import { provideRouter, withAutoCleanupInjectors } from '@angular/router';
 import { provideExperimentalWebMcpForms } from '@angular/forms/signals';
 import {
   BasicCatalog,
@@ -25,7 +25,7 @@ import {APP_TOOLS} from './webmcp/shelter-tools';
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
-    provideRouter(routes, withExperimentalAutoCleanupInjectors()),
+    provideRouter(routes, withAutoCleanupInjectors()),
     provideHttpClient(),
     provideExperimentalWebMcpTools(APP_TOOLS),
     provideExperimentalWebMcpForms(),

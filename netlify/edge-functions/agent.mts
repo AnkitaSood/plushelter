@@ -6,8 +6,8 @@ import { validateA2uiMessages } from '../shared/a2ui-validator.ts';
  * /api/agent — the streaming agent planner for Plushelter.
  *
  * Supports both:
- * 1. Standard AG-UI Protocol (v0.0.59) when requested via `x-ag-ui-protocol` header,
- *    `?protocol=ag-ui` parameter, or `{ protocol: 'ag-ui' }` in body.
+ * 1. Standard AG-UI Protocol (1.0) when requested via `x-ag-ui-protocol` header,
+ *    `?protocol=ag-ui` parameter, or `{ protocol: 'ag-ui' }` / `{ messages: [...] }` in body.
  * 2. Legacy 4-event contract for backward compatibility during phased transition.
  *
  * AG-UI Events emitted:
@@ -124,14 +124,40 @@ interface ToolResultInput {
   result: string;
 }
 
+interface AgUiMessageInput {
+  id?: string;
+  role: string;
+  content?: string | Array<{ type: string; text?: string; [key: string]: unknown }>;
+  toolCallId?: string;
+  name?: string;
+  [key: string]: unknown;
+}
+
 interface AgentRequestBody {
+  // AG-UI 1.0 standard input properties:
+  threadId?: string;
+  runId?: string;
+  messages?: AgUiMessageInput[];
+  tools?: Array<{
+    type?: string;
+    name: string;
+    description: string;
+    parameters?: Record<string, unknown>;
+  }>;
+  forwardedProps?: {
+    composeA2ui?: boolean;
+    previousInteractionId?: string;
+    toolResult?: ToolResultInput;
+    [key: string]: unknown;
+  };
+  context?: unknown[];
+  protocolVersion?: string;
+
+  // Legacy / convenience properties:
   message?: string;
   toolResult?: ToolResultInput;
   previousInteractionId?: string;
-  tools?: GeminiToolDecl[];
   protocol?: 'ag-ui' | 'legacy';
-  threadId?: string;
-  runId?: string;
   /** Defaults to true (the agent panel/console rely on Gemini composing its own A2UI surfaces).
    * Callers that compose their own deterministic surfaces from tool results — concierge — pass
    * `false` so Gemini never streams a raw ```a2ui fence into visible chat text. */
@@ -141,6 +167,23 @@ interface AgentRequestBody {
 interface SseRecord {
   event: string;
   data: any;
+}
+
+function normalizeParameters(schema: unknown): Record<string, unknown> {
+  if (typeof schema === 'string') {
+    try {
+      const parsed = JSON.parse(schema);
+      if (typeof parsed === 'object' && parsed !== null) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return { type: 'object', properties: {} };
+    }
+  }
+  if (typeof schema === 'object' && schema !== null) {
+    return schema as Record<string, unknown>;
+  }
+  return { type: 'object', properties: {} };
 }
 
 async function* parseSseStream(body: ReadableStream<Uint8Array>): AsyncGenerator<SseRecord> {
@@ -161,8 +204,15 @@ async function* parseSseStream(body: ReadableStream<Uint8Array>): AsyncGenerator
       let eventType = 'message';
       let dataLine = '';
       for (const line of rawEvent.split('\n')) {
-        if (line.startsWith('event:')) eventType = line.slice(6).trim();
-        else if (line.startsWith('data:')) dataLine += line.slice(5).trim();
+        const trimmed = line.trim();
+        if (trimmed.startsWith('event:')) {
+          eventType = trimmed.slice(6).trim();
+        } else if (trimmed.startsWith('data:')) {
+          dataLine += trimmed.slice(5).trim();
+        } else if (trimmed.startsWith('{') && trimmed.includes('"error"')) {
+          eventType = 'error';
+          dataLine = trimmed;
+        }
       }
       if (!dataLine || dataLine === '[DONE]') continue;
       yield { event: eventType, data: JSON.parse(dataLine) };
@@ -205,6 +255,11 @@ async function streamGeminiTurn(
   let rawArguments = '';
 
   for await (const { event, data } of parseSseStream(response.body)) {
+    if (event === 'error') {
+      const errMsg = data?.error?.message || data?.message || JSON.stringify(data);
+      throw new Error(`Gemini streaming error: ${errMsg}`);
+    }
+
     if (event === 'step.start' && data.step?.type === 'function_call') {
       functionCall = {
         id: data.step.id,
@@ -511,25 +566,73 @@ export default async (req: Request) => {
   const isAgUi =
     req.headers.get('x-ag-ui-protocol') === 'true' ||
     url.searchParams.get('protocol') === 'ag-ui' ||
-    body.protocol === 'ag-ui';
+    body.protocol === 'ag-ui' ||
+    Boolean(body.messages) ||
+    Boolean(body.protocolVersion);
 
   const threadId = body.threadId || `thread-${crypto.randomUUID()}`;
   const runId = body.runId || `run-${crypto.randomUUID()}`;
 
-  const isToolResultTurn = Boolean(body.toolResult);
-  if (!body.message && !isToolResultTurn) {
+  // Resolve tool result from AG-UI 1.0 (forwardedProps or messages) or legacy body
+  let toolResult = body.toolResult || body.forwardedProps?.toolResult;
+  if (!toolResult && body.messages && body.messages.length > 0) {
+    const lastMsg = body.messages[body.messages.length - 1];
+    if (lastMsg.role === 'tool' && lastMsg.toolCallId) {
+      const resultText =
+        typeof lastMsg.content === 'string'
+          ? lastMsg.content
+          : Array.isArray(lastMsg.content)
+            ? lastMsg.content.map((p) => p.text || '').join('')
+            : '';
+      toolResult = {
+        call_id: lastMsg.toolCallId,
+        name: lastMsg.name || 'tool',
+        result: resultText,
+      };
+    }
+  }
+
+  // Resolve user message from body.message or AG-UI 1.0 messages
+  let message = body.message;
+  if (!message && !toolResult && body.messages && body.messages.length > 0) {
+    for (let i = body.messages.length - 1; i >= 0; i--) {
+      const msg = body.messages[i];
+      if (msg.role === 'user' && msg.content) {
+        message =
+          typeof msg.content === 'string'
+            ? msg.content
+            : Array.isArray(msg.content)
+              ? msg.content.map((p) => p.text || '').join('')
+              : '';
+        break;
+      }
+    }
+  }
+
+  const isToolResultTurn = Boolean(toolResult);
+  if (!message && !isToolResultTurn) {
     return new Response(
-      JSON.stringify({ error: { code: 'INVALID_REQUEST', message: 'message or toolResult required' } }),
+      JSON.stringify({ error: { code: 'INVALID_REQUEST', message: 'message, messages, or toolResult required' } }),
       { status: 400, headers: { 'Content-Type': 'application/json' } },
     );
   }
+
+  const previousInteractionId =
+    body.previousInteractionId || body.forwardedProps?.previousInteractionId;
+
+  const composeA2ui =
+    body.composeA2ui !== undefined
+      ? body.composeA2ui
+      : body.forwardedProps?.composeA2ui !== undefined
+        ? body.forwardedProps.composeA2ui
+        : true;
 
   const stream = new ReadableStream({
     async start(controller) {
       try {
         if (isDemoMode()) {
           if (isAgUi) {
-            await streamAgUiDemo(controller, isToolResultTurn, threadId, runId, body.message || '');
+            await streamAgUiDemo(controller, isToolResultTurn, threadId, runId, message || '');
           } else {
             await streamLegacyDemo(controller, isToolResultTurn);
           }
@@ -543,9 +646,15 @@ export default async (req: Request) => {
         }
 
         const model = resolveModel();
-        const tools = body.tools ?? [];
+        const rawTools = body.tools ?? [];
+        const tools: GeminiToolDecl[] = rawTools.map((t) => ({
+          type: 'function',
+          name: t.name,
+          description: t.description,
+          parameters: normalizeParameters(t.parameters ?? (t as any).inputSchema),
+        }));
         const systemInstruction =
-          body.composeA2ui === false
+          composeA2ui === false
             ? BASE_SYSTEM_INSTRUCTION
             : BASE_SYSTEM_INSTRUCTION + A2UI_COMPOSITION_INSTRUCTION;
 
@@ -563,12 +672,12 @@ export default async (req: Request) => {
           ? [
               {
                 type: 'function_result',
-                name: body.toolResult!.name,
-                call_id: body.toolResult!.call_id,
-                result: [{ type: 'text', text: body.toolResult!.result }],
+                name: toolResult!.name,
+                call_id: toolResult!.call_id,
+                result: [{ type: 'text', text: toolResult!.result }],
               },
             ]
-          : body.message;
+          : message;
 
         const messageId = `msg-${crypto.randomUUID()}`;
         let textStarted = false;
@@ -579,7 +688,7 @@ export default async (req: Request) => {
           {
             model,
             input,
-            previous_interaction_id: body.previousInteractionId,
+            previous_interaction_id: previousInteractionId,
             tools,
             system_instruction: systemInstruction,
           },
@@ -685,6 +794,10 @@ export default async (req: Request) => {
               threadId,
               result: interactionId ? { interactionId } : undefined,
               metadata: interactionId ? { interactionId } : undefined,
+              outcome: {
+                type: 'success',
+                ...(functionCall ? { pendingToolCallIds: [functionCall.id] } : {}),
+              },
             }),
           );
         } else {

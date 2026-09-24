@@ -161,6 +161,9 @@ export class SurrenderFlow {
           'File a stuffed-animal surrender request with the shelter. Provide the owner name, the ' +
           'animal name, its species, its current condition, and the reason for surrender. The animal ' +
           'is added to the roster with photos pending.',
+        annotations: {
+          consequentialHint: true,
+        },
       },
       submission: {
         action: async (field) => {

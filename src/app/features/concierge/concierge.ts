@@ -119,7 +119,7 @@ const CANVAS_SURFACE_ID = 'concierge-canvas';
         <app-form-field
           label="Message the concierge"
           [(value)]="draft"
-          hint="describe your ideal pet plushie"
+          hint="describe your ideal pet plushie."
         />
         <app-button type="submit" [disabled]="!canSend()">Send</app-button>
       </form>
@@ -224,7 +224,6 @@ const CANVAS_SURFACE_ID = 'concierge-canvas';
       font-family: var(--font-mono);
       font-size: var(--text-xs);
       cursor: pointer;
-      box-shadow: var(--shadow-flat);
     }
 
     .preset-pill:hover {
@@ -322,6 +321,14 @@ export class Concierge implements OnDestroy {
             } else if (event.type === 'done') {
               if (accumulatedText) {
                 this.history.update((turns) => [...turns, { role: 'concierge', content: accumulatedText }]);
+              } else if (this.candidateAnimals().length === 0) {
+                this.history.update((turns) => [
+                  ...turns,
+                  {
+                    role: 'concierge',
+                    content: "I couldn't find any specific companions matching that description right now. Could you try describing different traits or preferences?",
+                  },
+                ]);
               }
             } else if (event.type === 'error') {
               this.lastError.set({ code: event.code, message: event.message });

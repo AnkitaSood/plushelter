@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Service, inject, signal } from '@angular/core';
 import { A2uiRendererService } from '@a2ui/angular/v0_9';
 import type { A2uiMessage } from '@a2ui/web_core/v0_9';
 import { SHELTER_CATALOG_ID } from '../a2ui/shelter-catalog';
@@ -18,7 +18,7 @@ export interface HitlDecision {
 
 export const HITL_SURFACE_ID = 'hitl-authorization';
 
-@Injectable({ providedIn: 'root' })
+@Service()
 export class HitlAuthorizationService {
   private readonly a2ui = inject(A2uiRendererService);
   private readonly dispatcher = inject(A2uiActionDispatcherService);

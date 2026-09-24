@@ -69,10 +69,10 @@ const CANVAS_SURFACE_ID = 'concierge-canvas';
             </p>
             <div class="empty-presets">
               <span>Quick prompts:</span>
-              <button type="button" class="preset-pill" (click)="sendPreset('Low maintenance bears')">
-                "Low maintenance bears."
+              <button type="button" class="preset-pill" (click)="sendPreset('Friendly with kids')">
+                "Friendly with kids."
               </button>
-              <button type="button" class="preset-pill" (click)="sendPreset('Outdoorsy and active. High energy')">
+              <button type="button" class="preset-pill" (click)="sendPreset('Outdoorsy and active. High energy.')">
                 "Outdoorsy and active. High energy."
               </button>
             </div>
@@ -119,7 +119,7 @@ const CANVAS_SURFACE_ID = 'concierge-canvas';
         <app-form-field
           label="Message the concierge"
           [(value)]="draft"
-          hint="Try: something low-maintenance for two kids"
+          hint="describe your ideal pet plushie"
         />
         <app-button type="submit" [disabled]="!canSend()">Send</app-button>
       </form>

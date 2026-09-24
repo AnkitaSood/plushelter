@@ -32,17 +32,21 @@
 }
 
 .app-nav {
+  container-type: inline-size;
+  container-name: app-nav;
   position: relative;
   z-index: 1001;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-3) var(--space-5);
+  padding: var(--space-3) clamp(var(--space-3), 3cqi, var(--space-5));
   background: var(--color-bg);
-  border-bottom: var(--border-width) solid var(--border-color);
+  border-bottom: 1px solid var(--color-bg-subtle);
 }
 
 .app-nav__brand {
+  position: relative;
+  z-index: 1001;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -64,15 +68,61 @@
   color: var(--color-ink);
 }
 
-.app-nav__links {
+.app-nav__right {
+  position: static;
   display: flex;
   align-items: center;
   gap: var(--space-2);
 }
 
+.app-nav__actions {
+  position: relative;
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.app-nav__toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--color-ink);
+  transition: background 150ms ease-out;
+}
+
+.app-nav__toggle:hover {
+  background: color-mix(in srgb, var(--color-primary) 15%, transparent);
+}
+
+.app-nav__toggle:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: 2px;
+}
+
+.app-nav__toggle-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.app-nav__links {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-1);
+}
+
 .app-nav__link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
   font-family: var(--font-mono);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   font-weight: 400;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -80,27 +130,118 @@
   color: var(--color-ink);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
-  /* Underline indicator, not a filled pill — a filled periwinkle chip here
-     is visually identical to Button (same fill + ink + border language),
-     which reads as "clickable action" rather than "current page." Matches
-     the Intake/Surrender tablist's own selected-tab treatment. */
-  border-bottom: var(--border-width) solid transparent;
-  transition:
-    background 150ms ease-out,
-    border-color 150ms ease-out;
+  transition: background 150ms ease-out;
+}
+
+/* Underline indicator via pseudo-element — lives outside the box model
+   so it never changes the link's height or pushes siblings around. */
+.app-nav__link::after {
+  content: '';
+  position: absolute;
+  inset-inline: var(--space-3);
+  bottom: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background 150ms ease-out;
 }
 
 .app-nav__link:hover {
-  background: color-mix(in srgb, var(--color-primary) 25%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 15%, transparent);
 }
 
 .app-nav__link.is-active {
-  border-bottom-color: var(--color-primary);
-  font-weight: 600;
+  /* Use the same weight — no font-weight change means no width reflow.
+     Color alone is sufficient to signal the active page. */
+  color: var(--color-ink);
+}
+
+.app-nav__link.is-active::after {
+  background: var(--color-primary);
+}
+
+.app-nav__backdrop {
+  display: none;
+}
+
+/* Container query for iPad and mobile screen sizes */
+@container app-nav (max-width: 1024px) {
+  .app-nav__toggle {
+    display: inline-flex;
+  }
+
+  .app-nav__links {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    width: 100%;
+    flex-direction: column;
+    background: var(--color-bg);
+    border-bottom: var(--border-width) solid var(--border-color);
+    box-shadow: 0 4px 0 0 var(--color-ink-on-accent);
+    padding: var(--space-3) var(--space-4);
+    gap: var(--space-1);
+    z-index: 1000;
+  }
+
+  .app-nav__links.is-open {
+    display: flex;
+    animation: app-nav-slide-down 150ms ease-out;
+  }
+
+  .app-nav__link {
+    display: flex;
+    width: 100%;
+    padding: var(--space-3) var(--space-4);
+    font-size: var(--text-base);
+    border-radius: var(--radius-sm);
+  }
+
+  .app-nav__link::after {
+    display: none;
+  }
+
+  .app-nav__link.is-active {
+    background: color-mix(in srgb, var(--color-primary) 15%, transparent);
+    border-left: 3px solid var(--color-primary);
+    padding-left: calc(var(--space-4) - 3px);
+  }
+
+  .app-nav__backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    top: 0;
+    background: color-mix(in srgb, var(--color-ink) 20%, transparent);
+    z-index: 999;
+  }
+}
+
+@container app-nav (max-width: 520px) {
+  .app-nav__subtitle {
+    display: none;
+  }
+}
+
+@keyframes app-nav-slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-nav__link {
+  .app-nav__link,
+  .app-nav__link::after,
+  .app-nav__toggle,
+  .app-nav__links.is-open {
     transition: none;
+    animation: none;
   }
 }

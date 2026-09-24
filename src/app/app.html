@@ -4,52 +4,94 @@
     <span class="app-nav__title">Plushelter</span>
     <span class="app-nav__subtitle">Stuffed Animal Rehabilitation Facility</span>
   </div>
-  <nav class="app-nav__links" aria-label="Main navigation">
-    <a
-      routerLink="/"
-      routerLinkActive="is-active"
-      [routerLinkActiveOptions]="{ exact: true }"
-      ariaCurrentWhenActive="page"
-      class="app-nav__link"
-    >Intake / Surrender</a>
-    <a
-      routerLink="/roster"
-      routerLinkActive="is-active"
-      ariaCurrentWhenActive="page"
-      class="app-nav__link"
-    >Roster</a>
-    <a
-      routerLink="/concierge"
-      routerLinkActive="is-active"
-      ariaCurrentWhenActive="page"
-      class="app-nav__link"
-    >Adoption Concierge</a>
-    <a
-      routerLink="/surrender-risk"
-      routerLinkActive="is-active"
-      ariaCurrentWhenActive="page"
-      class="app-nav__link"
-    >Risk Analysis</a>
-    <a
-      routerLink="/match-wizard"
-      routerLinkActive="is-active"
-      ariaCurrentWhenActive="page"
-      class="app-nav__link"
-    >Match Wizard</a>
-    <a
-      routerLink="/faq"
-      routerLinkActive="is-active"
-      ariaCurrentWhenActive="page"
-      class="app-nav__link"
-    >FAQ</a>
-<!--    <a
-      routerLink="/agent-console"
-      routerLinkActive="is-active"
-      ariaCurrentWhenActive="page"
-      class="app-nav__link"
-    >Agent Console</a>-->
-    <app-theme-toggle />
-  </nav>
+
+  <div class="app-nav__right">
+    <nav id="app-nav-menu" class="app-nav__links" [class.is-open]="menuOpen()" aria-label="Main navigation">
+      <a
+        routerLink="/"
+        routerLinkActive="is-active"
+        [routerLinkActiveOptions]="{ exact: true }"
+        ariaCurrentWhenActive="page"
+        class="app-nav__link"
+        (click)="closeMenu()"
+      >Intake / Surrender</a>
+      <a
+        routerLink="/roster"
+        routerLinkActive="is-active"
+        ariaCurrentWhenActive="page"
+        class="app-nav__link"
+        (click)="closeMenu()"
+      >Roster</a>
+      <a
+        routerLink="/concierge"
+        routerLinkActive="is-active"
+        ariaCurrentWhenActive="page"
+        class="app-nav__link"
+        (click)="closeMenu()"
+      >Adoption Concierge</a>
+      <a
+        routerLink="/surrender-risk"
+        routerLinkActive="is-active"
+        ariaCurrentWhenActive="page"
+        class="app-nav__link"
+        (click)="closeMenu()"
+      >Risk Analysis</a>
+      <a
+        routerLink="/match-wizard"
+        routerLinkActive="is-active"
+        ariaCurrentWhenActive="page"
+        class="app-nav__link"
+        (click)="closeMenu()"
+      >Match Wizard</a>
+      <a
+        routerLink="/faq"
+        routerLinkActive="is-active"
+        ariaCurrentWhenActive="page"
+        class="app-nav__link"
+        (click)="closeMenu()"
+      >FAQ</a>
+  <!--    <a
+        routerLink="/agent-console"
+        routerLinkActive="is-active"
+        ariaCurrentWhenActive="page"
+        class="app-nav__link"
+        (click)="closeMenu()"
+      >Agent Console</a>-->
+    </nav>
+
+    <div class="app-nav__actions">
+      <app-theme-toggle />
+      <button
+        type="button"
+        class="app-nav__toggle"
+        [attr.aria-expanded]="menuOpen()"
+        aria-controls="app-nav-menu"
+        aria-label="Toggle navigation menu"
+        (click)="toggleMenu()"
+      >
+        @if (menuOpen()) {
+          <!-- Close icon (X) -->
+          <svg class="app-nav__toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        } @else {
+          <!-- Hamburger icon -->
+          <svg class="app-nav__toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        }
+      </button>
+    </div>
+  </div>
+
+  @if (menuOpen()) {
+    <div class="app-nav__backdrop" (click)="closeMenu()" aria-hidden="true"></div>
+  }
 </header>
 <main id="main-content">
   <router-outlet />
